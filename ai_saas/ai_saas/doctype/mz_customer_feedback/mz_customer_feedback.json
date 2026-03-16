@@ -1,0 +1,97 @@
+{
+	"actions": [],
+	"autoname": "MZ-FDBK-.YYYY.-.#####",
+	"creation": "2026-03-15 00:00:00",
+	"doctype": "DocType",
+	"editable_grid": 1,
+	"engine": "InnoDB",
+	"field_order": [
+		"contract",
+		"customer_name",
+		"feedback_type",
+		"rating",
+		"feedback_text",
+		"quality_feedback"
+	],
+	"fields": [
+		{
+			"fieldname": "contract",
+			"fieldtype": "Link",
+			"label": "Contrato",
+			"options": "Contract",
+			"reqd": 1,
+			"in_list_view": 1
+		},
+		{
+			"fieldname": "customer_name",
+			"fieldtype": "Data",
+			"label": "Cliente",
+			"read_only": 1,
+			"in_list_view": 1
+		},
+		{
+			"fieldname": "feedback_type",
+			"fieldtype": "Select",
+			"label": "Tipo de Feedback",
+			"options": "Primeiros Passos\nPrimeiro Mês",
+			"reqd": 1,
+			"in_list_view": 1
+		},
+		{
+			"fieldname": "rating",
+			"fieldtype": "Int",
+			"label": "Avaliação (1–5)",
+			"reqd": 1,
+			"in_list_view": 1
+		},
+		{
+			"fieldname": "feedback_text",
+			"fieldtype": "Small Text",
+			"label": "Comentário (opcional)",
+			"reqd": 0
+		},
+		{
+			"fieldname": "quality_feedback",
+			"fieldtype": "Link",
+			"label": "Quality Feedback",
+			"options": "Quality Feedback",
+			"read_only": 1
+		}
+	],
+	"links": [],
+	"modified": "2026-03-15 00:00:00",
+	"modified_by": "Administrator",
+	"module": "AI SaaS",
+	"name": "MZ Customer Feedback",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "System Manager",
+			"share": 1,
+			"write": 1
+		},
+		{
+			"create": 1,
+			"delete": 0,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "Sales Manager",
+			"share": 0,
+			"write": 1
+		}
+	],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": [],
+	"track_changes": 1
+}

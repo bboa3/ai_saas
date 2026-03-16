@@ -1,0 +1,3 @@
+recursive-include ai_saas/ai_saas/doctype *.json
+recursive-include ai_saas/fixtures *.json
+include ai_saas/ai_saas/public/build.json
