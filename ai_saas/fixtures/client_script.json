@@ -1,0 +1,13 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Contract",
+  "enabled": 1,
+  "modified": "2026-03-16 15:21:08.891326",
+  "module": "AI SaaS",
+  "name": "AI SaaS - Contract",
+  "script": "frappe.ui.form.on('Contract', {\n\trefresh: function(frm) {\n\t\t_attach_tenant_suffix(frm);\n\t\t_update_tenant_url(frm);\n\t},\n\tmz_tenant: function(frm) {\n\t\t_update_tenant_url(frm);\n\t}\n});\n\nfunction _attach_tenant_suffix(frm) {\n\tvar field = frm.fields_dict['mz_tenant'];\n\tif (!field || !field.$input || field._mz_suffix_attached) return;\n\tfield._mz_suffix_attached = true;\n\n\tvar $input = field.$input;\n\t// Make the input and suffix look like a single combined widget\n\t$input.css({\n\t\t'border-top-right-radius': '0',\n\t\t'border-bottom-right-radius': '0',\n\t\t'border-right': 'none'\n\t});\n\tvar $suffix = $('<span>', {\n\t\ttext: '.erp.mozeconomia.co.mz',\n\t\tcss: {\n\t\t\tdisplay: 'inline-flex',\n\t\t\t'align-items': 'center',\n\t\t\tpadding: '0 10px',\n\t\t\tbackground: '#f5f7fa',\n\t\t\tborder: '1px solid #d1d8dd',\n\t\t\t'border-left': 'none',\n\t\t\t'border-radius': '0 4px 4px 0',\n\t\t\t'font-size': '13px',\n\t\t\tcolor: '#6c7680',\n\t\t\t'white-space': 'nowrap',\n\t\t\t'line-height': '1'\n\t\t}\n\t});\n\t$input.parent().css('display', 'flex');\n\t$input.after($suffix);\n}\n\nfunction _update_tenant_url(frm) {\n\tvar slug = (frm.doc.mz_tenant || '').trim().toLowerCase();\n\tvar url = slug ? slug + '.erp.mozeconomia.co.mz' : '';\n\tif (frm.doc.mz_tenant_url !== url) {\n\t\tfrm.set_value('mz_tenant_url', url);\n\t}\n}\n",
+  "view": "Form"
+ }
+]
