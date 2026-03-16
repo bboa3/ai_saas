@@ -33,7 +33,7 @@ scheduler_events = {
 }
 
 fixtures = [
-	{"dt": "Custom Field", "filters": [["dt", "in", ["Contract"]]]},
+	{"dt": "Custom Field", "filters": [["dt", "in", ["Contract"]], ["module", "=", "AI SaaS"]]},
 	{"dt": "Notification", "filters": [["name", "like", "AI SaaS%"]]},
 	{"dt": "Client Script", "filters": [["name", "like", "AI SaaS%"]]},
 	{"dt": "Web Form", "filters": [["name", "=", "lead-onboarding-form"]]},
