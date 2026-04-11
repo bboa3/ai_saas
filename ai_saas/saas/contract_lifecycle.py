@@ -61,7 +61,7 @@ def _setup_subscription(doc):
 		"generate_invoice_at": "Beginning of the current subscription period",
 		"submit_invoice": 1,
 		"days_until_due": 7,
-		"generate_new_invoices_past_due_date": 1,
+		"generate_new_invoices_past_due_date": 0,
 		"sales_tax_template": _get_default_tax_template(company),
 		"plans": [{"plan": plan_name, "qty": 1}],
 	})
