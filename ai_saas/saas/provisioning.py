@@ -133,6 +133,8 @@ def _run_provisioning(provisioning_name: str) -> None:
 	try:
 		_step_create_site(prov)
 		_step_run_setup_wizard(prov)
+		_step_seed_company_profile(prov)
+		_step_setup_smtp(prov)
 		_step_notify_customer(prov)
 
 		prov.status = "Active"
@@ -230,6 +232,120 @@ def _step_run_setup_wizard(prov) -> None:
 		timeout=WIZARD_TIMEOUT,
 	)
 	_append_log(prov, "Assistente de configuração concluído.")
+
+
+def _step_seed_company_profile(prov) -> None:
+	"""Push company data collected from the MozEconomia Customer record to the
+	new site's MZ Company Setup so the onboarding wizard opens pre-filled."""
+	_append_log(prov, "A pré-preencher perfil da empresa no novo site")
+
+	data = _collect_customer_profile(prov)
+	if not data:
+		_append_log(prov, "AVISO: Sem dados de cliente para pré-preencher — passo ignorado.")
+		return
+
+	_run_cmd(
+		[
+			BENCH_CMD, "--site", prov.site_name,
+			"execute",
+			"erpnext_mz.setup.onboarding.seed_company_profile",
+			"--kwargs", json.dumps({"data": data}),
+		],
+		step="seed-company-profile",
+		prov=prov,
+		timeout=60,
+	)
+	_append_log(prov, f"Perfil pré-preenchido: {', '.join(data.keys())}")
+
+
+def _collect_customer_profile(prov) -> dict:
+	"""Fetch NUIT, address, and contact fields from the Customer linked to the contract.
+
+	Returns a dict keyed by MZ Company Setup field names. Only non-empty values are
+	included so we never overwrite real data with blank strings.
+	"""
+	try:
+		contract = frappe.get_doc("Contract", prov.contract)
+		customer_name = contract.party_name
+		if not customer_name:
+			return {}
+
+		data = {}
+
+		customer = frappe.db.get_value(
+			"Customer",
+			customer_name,
+			["tax_id", "mobile_no", "email_id", "website"],
+			as_dict=True,
+		)
+		if customer:
+			if customer.tax_id:
+				data["tax_id"] = customer.tax_id
+			if customer.mobile_no:
+				data["phone"] = customer.mobile_no
+			if customer.email_id:
+				data["email"] = customer.email_id
+			if customer.website:
+				data["website"] = customer.website
+
+		# contact_email from the provisioning record takes priority over Customer.email_id
+		if prov.contact_email:
+			data["email"] = prov.contact_email
+
+		# Primary address linked to the Customer
+		address_name = frappe.db.get_value(
+			"Dynamic Link",
+			{"link_doctype": "Customer", "link_name": customer_name, "parenttype": "Address"},
+			"parent",
+		)
+		if address_name:
+			addr = frappe.db.get_value(
+				"Address",
+				address_name,
+				["address_line1", "address_line2", "city", "state", "phone"],
+				as_dict=True,
+			)
+			if addr:
+				if addr.address_line1:
+					data["address_line1"] = addr.address_line1
+				if addr.address_line2:
+					data["neighborhood_or_district"] = addr.address_line2
+				if addr.city:
+					data["city"] = addr.city
+				if addr.state:
+					data["province"] = addr.state
+				if addr.phone and not data.get("phone"):
+					data["phone"] = addr.phone
+
+		return data
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "AI SaaS: _collect_customer_profile failed")
+		return {}
+
+
+def _step_setup_smtp(prov) -> None:
+	"""Configure outbound email on the new site so the customer can receive password-reset
+	emails after the initial reset link expires. Non-fatal: logs a warning on failure so
+	that a misconfigured SMTP server never blocks the provisioning from completing."""
+	_append_log(prov, "A configurar email no novo site")
+	try:
+		_run_cmd(
+			[
+				BENCH_CMD, "--site", prov.site_name,
+				"execute",
+				"erpnext_mz.setup.onboarding.ensure_smtp_infrastructure_manually",
+			],
+			step="setup-smtp",
+			prov=prov,
+			timeout=60,
+		)
+		_append_log(prov, "Infraestrutura de email configurada no novo site.")
+	except ProvisioningError as exc:
+		_append_log(prov, f"AVISO: Configuração de email falhou (não bloqueante): {exc}")
+		frappe.log_error(
+			title=f"AI SaaS: SMTP setup skipped for {prov.site_name}",
+			message=str(exc),
+		)
 
 
 def _step_notify_customer(prov) -> None:
