@@ -29,7 +29,10 @@ doc_events = {
 scheduler_events = {
 	"daily": [
 		"ai_saas.saas.billing_monitor.flag_overdue_customers",
-	]
+	],
+	"hourly": [
+		"ai_saas.saas.provisioning.retry_stuck_provisioning",
+	],
 }
 
 fixtures = [

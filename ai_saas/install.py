@@ -123,6 +123,16 @@ def _sync_custom_fields():
 						"insert_after": "contact_email",
 						"module": "AI SaaS",
 					},
+					{
+						# The sales team selects which Frappe apps to install for this tenant.
+						# Pre-populated with defaults by the client script on form load.
+						"fieldname": "mz_apps_to_install",
+						"label": "Aplicações a Instalar",
+						"fieldtype": "Table",
+						"options": "MZ Tenant App",
+						"insert_after": "mz_linked_subscription",
+						"module": "AI SaaS",
+					},
 				],
 			},
 			ignore_validate=True,
@@ -158,11 +168,16 @@ def _upsert_property_setter(doctype, fieldname, property, value, property_type):
 # the slug and the suffix ".erp.mozeconomia.co.mz" is shown attached to the
 # right of the input box, making the full domain immediately visible.
 # mz_tenant_url (read-only) is kept as the computed full URL for email templates.
+_DEFAULT_APPS = ["erpnext", "hrms", "erpnext_mz", "pos_next", "payments"]
+
 _CONTRACT_CLIENT_SCRIPT = """\
+var _DEFAULT_APPS = ['erpnext', 'hrms', 'erpnext_mz', 'pos_next', 'payments'];
+
 frappe.ui.form.on('Contract', {
 \trefresh: function(frm) {
 \t\t_attach_tenant_suffix(frm);
 \t\t_update_tenant_url(frm);
+\t\t_populate_default_apps(frm);
 \t},
 \tmz_tenant: function(frm) {
 \t\t_update_tenant_url(frm);
@@ -206,6 +221,17 @@ function _update_tenant_url(frm) {
 \tvar url = slug ? slug + '.erp.mozeconomia.co.mz' : '';
 \tif (frm.doc.mz_tenant_url !== url) {
 \t\tfrm.set_value('mz_tenant_url', url);
+\t}
+}
+
+function _populate_default_apps(frm) {
+\t// Pre-fill the apps table with defaults on new documents or when the list is empty.
+\t// The sales team can then add, remove, or reorder apps before signing the contract.
+\tif (frm.doc.__islocal || !(frm.doc.mz_apps_to_install || []).length) {
+\t\tvar rows = _DEFAULT_APPS.map(function(app) {
+\t\t\treturn { app_name: app };
+\t\t});
+\t\tfrm.set_value('mz_apps_to_install', rows);
 \t}
 }
 """

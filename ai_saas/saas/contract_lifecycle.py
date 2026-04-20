@@ -2,16 +2,32 @@ import frappe
 
 
 def on_contract_signed(doc, method=None):
-	"""Create Subscription when a contract is signed — fires on both on_submit and on_update_after_submit."""
+	"""Create Subscription and queue site provisioning when a contract is signed."""
 	if doc.party_type != "Customer":
 		return
 	if not doc.is_signed:
 		return
 	if not doc.get("mz_subscription_plan"):
 		return
-	if doc.get("mz_linked_subscription"):
-		return  # already created, nothing to do
-	_setup_subscription(doc)
+	if not doc.get("mz_linked_subscription"):
+		_setup_subscription(doc)
+	_maybe_provision_tenant(doc)
+
+
+def _maybe_provision_tenant(doc):
+	"""Queue tenant site provisioning if mz_tenant is set. Idempotent."""
+	if not doc.get("mz_tenant"):
+		return
+	try:
+		from ai_saas.saas.provisioning import provision_tenant
+		provision_tenant(doc.name)
+	except frappe.ValidationError:
+		raise  # surface invalid-slug errors to the user immediately
+	except Exception:
+		frappe.log_error(
+			title=f"AI SaaS: Falha ao enfileirar provisionamento para {doc.name}",
+			message=frappe.get_traceback(),
+		)
 
 
 def on_contract_cancel(doc, method=None):

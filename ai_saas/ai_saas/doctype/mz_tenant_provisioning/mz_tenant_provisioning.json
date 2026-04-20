@@ -1,0 +1,153 @@
+{
+	"actions": [],
+	"autoname": "MZ-PROV-.YYYY.-.#####",
+	"creation": "2026-04-19 00:00:00",
+	"doctype": "DocType",
+	"editable_grid": 1,
+	"engine": "InnoDB",
+	"field_order": [
+		"contract",
+		"tenant_slug",
+		"site_name",
+		"customer_name",
+		"contact_email",
+		"contact_password",
+		"status",
+		"attempts",
+		"provisioned_at",
+		"section_apps",
+		"mz_provisioning_apps",
+		"section_log",
+		"last_error",
+		"log"
+	],
+	"fields": [
+		{
+			"fieldname": "contract",
+			"fieldtype": "Link",
+			"label": "Contrato",
+			"options": "Contract",
+			"reqd": 1,
+			"search_index": 1,
+			"in_list_view": 1
+		},
+		{
+			"fieldname": "tenant_slug",
+			"fieldtype": "Data",
+			"label": "Subdomínio (slug)",
+			"reqd": 1,
+			"in_list_view": 1
+		},
+		{
+			"fieldname": "site_name",
+			"fieldtype": "Data",
+			"label": "Nome do Site",
+			"read_only": 1,
+			"in_list_view": 1
+		},
+		{
+			"fieldname": "customer_name",
+			"fieldtype": "Data",
+			"label": "Nome da Empresa"
+		},
+		{
+			"fieldname": "contact_email",
+			"fieldtype": "Data",
+			"label": "Email do Contacto",
+			"options": "Email"
+		},
+		{
+			"fieldname": "contact_password",
+			"fieldtype": "Password",
+			"label": "Senha do Contacto"
+		},
+		{
+			"fieldname": "status",
+			"fieldtype": "Select",
+			"label": "Estado",
+			"options": "Queued\nCreating Site\nRunning Setup Wizard\nNotifying Customer\nActive\nFailed",
+			"default": "Queued",
+			"reqd": 1,
+			"search_index": 1,
+			"in_list_view": 1
+		},
+		{
+			"fieldname": "attempts",
+			"fieldtype": "Int",
+			"label": "Tentativas",
+			"default": "0",
+			"read_only": 1
+		},
+		{
+			"fieldname": "provisioned_at",
+			"fieldtype": "Datetime",
+			"label": "Data de Provisionamento",
+			"read_only": 1
+		},
+		{
+			"fieldname": "section_apps",
+			"fieldtype": "Section Break",
+			"label": "Aplicações a Instalar"
+		},
+		{
+			"fieldname": "mz_provisioning_apps",
+			"fieldtype": "Table",
+			"label": "Aplicações",
+			"options": "MZ Tenant App",
+			"read_only": 1
+		},
+		{
+			"fieldname": "section_log",
+			"fieldtype": "Section Break",
+			"label": "Log de Progresso"
+		},
+		{
+			"fieldname": "last_error",
+			"fieldtype": "Long Text",
+			"label": "Último Erro",
+			"read_only": 1
+		},
+		{
+			"fieldname": "log",
+			"fieldtype": "Long Text",
+			"label": "Log",
+			"read_only": 1
+		}
+	],
+	"links": [],
+	"modified": "2026-04-19 00:00:00",
+	"modified_by": "Administrator",
+	"module": "AI SaaS",
+	"name": "MZ Tenant Provisioning",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "System Manager",
+			"share": 1,
+			"write": 1
+		},
+		{
+			"create": 0,
+			"delete": 0,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "Sales Manager",
+			"share": 0,
+			"write": 0
+		}
+	],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": [],
+	"track_changes": 1
+}
