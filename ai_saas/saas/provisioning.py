@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import re
@@ -132,6 +131,7 @@ def _run_provisioning(provisioning_name: str) -> None:
 
 	try:
 		_step_create_site(prov)
+		_step_apply_system_settings(prov)
 		_step_run_setup_wizard(prov)
 		_step_seed_company_profile(prov)
 		_step_setup_smtp(prov)
@@ -234,6 +234,41 @@ def _step_run_setup_wizard(prov) -> None:
 	_append_log(prov, "Assistente de configuração concluído.")
 
 
+def _step_apply_system_settings(prov) -> None:
+	"""Ensure pt-MZ language record exists and apply system-wide Mozambique defaults
+	BEFORE setup_complete runs.  setup_complete assigns wizard args.language to the
+	newly created User record; if the Language 'pt-MZ' does not exist at that moment
+	Frappe silently falls back to 'en'.  Running ensure_language_pt_mz first
+	guarantees the Language record is present, and apply_system_settings primes
+	System Settings so the wizard inherits the correct defaults.
+	"""
+	_append_log(prov, "A garantir registo de idioma pt-MZ no novo site")
+	_run_cmd(
+		[
+			BENCH_CMD, "--site", prov.site_name,
+			"execute",
+			"erpnext_mz.setup.language.ensure_language_pt_mz",
+		],
+		step="ensure-language",
+		prov=prov,
+		timeout=30,
+	)
+
+	_append_log(prov, "A aplicar definições de sistema (idioma pt-MZ, MZN, fuso horário)")
+	_run_cmd(
+		[
+			BENCH_CMD, "--site", prov.site_name,
+			"execute",
+			"erpnext_mz.setup.language.apply_system_settings",
+			"--kwargs", '{"override": 1}',
+		],
+		step="apply-system-settings",
+		prov=prov,
+		timeout=60,
+	)
+	_append_log(prov, "Definições de sistema aplicadas.")
+
+
 def _step_seed_company_profile(prov) -> None:
 	"""Push company data collected from the MozEconomia Customer record to the
 	new site's MZ Company Setup so the onboarding wizard opens pre-filled."""
@@ -263,6 +298,11 @@ def _collect_customer_profile(prov) -> dict:
 
 	Returns a dict keyed by MZ Company Setup field names. Only non-empty values are
 	included so we never overwrite real data with blank strings.
+
+	Priority order for phone/email:
+	  1. prov.contact_email (explicitly set on the contract)
+	  2. Primary Contact linked to the Customer
+	  3. Customer.email_id / Customer.mobile_no direct fields
 	"""
 	try:
 		contract = frappe.get_doc("Contract", prov.contract)
@@ -272,6 +312,7 @@ def _collect_customer_profile(prov) -> dict:
 
 		data = {}
 
+		# ── Direct Customer fields ──────────────────────────────────────────────
 		customer = frappe.db.get_value(
 			"Customer",
 			customer_name,
@@ -288,15 +329,58 @@ def _collect_customer_profile(prov) -> dict:
 			if customer.website:
 				data["website"] = customer.website
 
-		# contact_email from the provisioning record takes priority over Customer.email_id
+		# ── Primary Contact linked to the Customer ──────────────────────────────
+		# In ERPNext, phone and email are usually stored on a Contact record, not
+		# directly on the Customer.  The primary contact has is_primary_contact=1.
+		contact_name = frappe.db.get_value(
+			"Dynamic Link",
+			{
+				"link_doctype": "Customer",
+				"link_name": customer_name,
+				"parenttype": "Contact",
+			},
+			"parent",
+		)
+		if contact_name:
+			contact = frappe.db.get_value(
+				"Contact",
+				contact_name,
+				["email_id", "phone", "mobile_no"],
+				as_dict=True,
+			)
+			if contact:
+				if contact.email_id and not data.get("email"):
+					data["email"] = contact.email_id
+				phone = contact.mobile_no or contact.phone
+				if phone and not data.get("phone"):
+					data["phone"] = phone
+
+		# ── Contract contact_email always wins ──────────────────────────────────
 		if prov.contact_email:
 			data["email"] = prov.contact_email
 
-		# Primary address linked to the Customer
-		address_name = frappe.db.get_value(
-			"Dynamic Link",
-			{"link_doctype": "Customer", "link_name": customer_name, "parenttype": "Address"},
-			"parent",
+		# ── Primary Address linked to the Customer ──────────────────────────────
+		# Try billing address first; fall back to any linked address.
+		address_name = (
+			frappe.db.get_value(
+				"Dynamic Link",
+				{
+					"link_doctype": "Customer",
+					"link_name": customer_name,
+					"parenttype": "Address",
+					"parent": ("in", frappe.db.get_all(
+						"Address",
+						filters={"address_type": "Billing"},
+						pluck="name",
+					) or ["__none__"]),
+				},
+				"parent",
+			)
+			or frappe.db.get_value(
+				"Dynamic Link",
+				{"link_doctype": "Customer", "link_name": customer_name, "parenttype": "Address"},
+				"parent",
+			)
 		)
 		if address_name:
 			addr = frappe.db.get_value(
@@ -350,7 +434,7 @@ def _step_setup_smtp(prov) -> None:
 
 def _step_notify_customer(prov) -> None:
 	prov.status = "Notifying Customer"
-	_append_log(prov, "A gerar link de redefinição de senha")
+	_append_log(prov, "A gerar link de acesso para o utilizador")
 	prov.save(ignore_permissions=True)
 	frappe.db.commit()
 
@@ -368,34 +452,35 @@ def _step_notify_customer(prov) -> None:
 # ---------------------------------------------------------------------------
 
 def _generate_password_reset_link(prov) -> str:
-	"""Generate a one-time password reset link for the Administrator user on the new site.
+	"""Generate a one-time password-reset URL for the contact_email user on the new site.
 
-	Generates the key locally, sets its SHA-256 hash on the remote site via bench execute,
-	and returns the full reset URL. The plaintext key is never stored anywhere.
+	Uses `bench execute` with `__import__` so the function is resolved at eval time
+	inside the new site's Frappe context. The plain dotted-path form fails because
+	bench execute evals in utils.py's global namespace where only `frappe` is
+	imported; `__import__` is a builtin and always in scope.
+
+	The key is stored for `prov.contact_email` — the user created by the setup wizard,
+	NOT Administrator.
 	"""
-	key = frappe.generate_hash(length=32)
-	hashed_key = hashlib.sha256(key.encode()).hexdigest()
-	now_str = frappe.utils.now()
-
-	_run_cmd(
+	method = (
+		"__import__('ai_saas.saas.site_helpers', fromlist=['generate_user_reset_link'])"
+		".generate_user_reset_link"
+	)
+	raw = _run_cmd_capture(
 		[
-			BENCH_CMD, "--site", prov.site_name,
-			"execute",
-			"frappe.db.set_value",
-			"--args", json.dumps([
-				"User",
-				"Administrator",
-				{
-					"reset_password_key": hashed_key,
-					"last_reset_password_key_generated_on": now_str,
-				},
-			]),
+			BENCH_CMD, "--site", prov.site_name, "execute", method,
+			"--kwargs", json.dumps({"email": prov.contact_email}),
 		],
 		step="reset-key",
 		prov=prov,
 		timeout=30,
 	)
-	return f"https://{prov.site_name}/update-password?key={key}"
+	# bench execute JSON-encodes the return value on stdout.
+	try:
+		url = json.loads(raw.strip())
+	except (json.JSONDecodeError, ValueError):
+		raise ProvisioningError(f"Link de reset inválido retornado pelo site: {raw!r}")
+	return url
 
 
 # ---------------------------------------------------------------------------
@@ -429,6 +514,33 @@ def _run_cmd(cmd: list, step: str, prov, timeout: int) -> None:
 			f"Passo '{step}' terminou com código {result.returncode}. "
 			f"Últimas linhas: {output[-500:]}"
 		)
+
+
+def _run_cmd_capture(cmd: list, step: str, prov, timeout: int) -> str:
+	"""Like _run_cmd but returns stdout for commands whose output we need to read."""
+	try:
+		result = subprocess.run(
+			cmd,
+			capture_output=True,
+			text=True,
+			cwd=BENCH_PATH,
+			env={**os.environ},
+			timeout=timeout,
+		)
+	except subprocess.TimeoutExpired as exc:
+		raise ProvisioningError(f"Passo '{step}' expirou ao fim de {timeout}s") from exc
+	except OSError as exc:
+		raise ProvisioningError(f"Passo '{step}' falhou ao iniciar: {exc}") from exc
+
+	output = (result.stdout or "") + (result.stderr or "")
+	_append_log(prov, f"[{step}] saída={result.returncode}\n{output[:4000]}")
+
+	if result.returncode != 0:
+		raise ProvisioningError(
+			f"Passo '{step}' terminou com código {result.returncode}. "
+			f"Últimas linhas: {output[-500:]}"
+		)
+	return result.stdout or ""
 
 
 # ---------------------------------------------------------------------------
