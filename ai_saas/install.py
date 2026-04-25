@@ -9,6 +9,8 @@ def after_install():
 	_sync_client_scripts()
 	_sync_sales_stages()
 	_sync_quality_feedback_templates()
+	ensure_multipay_custom_fields()
+	ensure_multipay_modes_of_payment()
 	frappe.db.commit()
 
 
@@ -20,6 +22,8 @@ def after_migrate():
 	_sync_client_scripts()
 	_sync_sales_stages()
 	_sync_quality_feedback_templates()
+	ensure_multipay_custom_fields()
+	ensure_multipay_modes_of_payment()
 	frappe.db.commit()
 
 
@@ -290,3 +294,125 @@ def _sync_quality_feedback_templates():
 			"parameters": [{"parameter": p} for p in parameters],
 		})
 		doc.insert(ignore_permissions=True)
+
+
+def ensure_multipay_custom_fields():
+	"""Add Multipay-related custom fields to Payment Request and Sales Invoice.
+
+	Not managed via fixtures to avoid the fixture-sync rollback bug.
+	"""
+	if not frappe.db.exists("DocType", "Payment Request"):
+		return
+	try:
+		from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+		create_custom_fields(
+			{
+				"Payment Request": [
+					{
+						"fieldname": "mpay_section",
+						"label": "Multipay (SISLOG)",
+						"fieldtype": "Section Break",
+						"insert_after": "message",
+						"module": "AI SaaS",
+					},
+					{
+						"fieldname": "mpay_method",
+						"label": "Canal de Pagamento",
+						"fieldtype": "Select",
+						"options": "\nE-Mola\nM-Pesa",
+						"insert_after": "mpay_section",
+						"module": "AI SaaS",
+					},
+					{
+						"fieldname": "mpay_status",
+						"label": "Estado Multipay",
+						"fieldtype": "Select",
+						"options": "\nPending\nPaid\nFailed\nExpired",
+						"insert_after": "mpay_method",
+						"module": "AI SaaS",
+					},
+					{
+						"fieldname": "mpay_transaction_id",
+						"label": "ID de Transação SISLOG",
+						"fieldtype": "Data",
+						"read_only": 1,
+						"unique": 1,
+						"insert_after": "mpay_status",
+						"module": "AI SaaS",
+					},
+					{
+						"fieldname": "mpay_column_break",
+						"fieldtype": "Column Break",
+						"insert_after": "mpay_transaction_id",
+						"module": "AI SaaS",
+					},
+					{
+						"fieldname": "mpay_entity",
+						"label": "Entidade SISLOG",
+						"fieldtype": "Data",
+						"read_only": 1,
+						"insert_after": "mpay_column_break",
+						"module": "AI SaaS",
+					},
+					{
+						"fieldname": "mpay_reference",
+						"label": "Referência SISLOG",
+						"fieldtype": "Data",
+						"read_only": 1,
+						"insert_after": "mpay_entity",
+						"module": "AI SaaS",
+					},
+					{
+						"fieldname": "mpay_payment_entry",
+						"label": "Entrada de Pagamento",
+						"fieldtype": "Link",
+						"options": "Payment Entry",
+						"read_only": 1,
+						"insert_after": "mpay_reference",
+						"module": "AI SaaS",
+					},
+					{
+						"fieldname": "mpay_sislog_raw",
+						"label": "Resposta SISLOG (Raw)",
+						"fieldtype": "Small Text",
+						"read_only": 1,
+						"insert_after": "mpay_payment_entry",
+						"module": "AI SaaS",
+					},
+				],
+				"Sales Invoice": [
+					{
+						"fieldname": "mz_latest_multipay_request",
+						"label": "Último Pedido Multipay",
+						"fieldtype": "Link",
+						"options": "Payment Request",
+						"read_only": 1,
+						"insert_after": "against_income_account",
+						"module": "AI SaaS",
+					},
+				],
+			},
+			ignore_validate=True,
+			update=True,
+		)
+	except Exception:
+		frappe.log_error(
+			title="AI SaaS: ensure_multipay_custom_fields failed",
+			message=frappe.get_traceback(),
+		)
+
+
+def ensure_multipay_modes_of_payment():
+	"""Ensure E-Mola and M-Pesa exist as Modes of Payment."""
+	for mop in ("E-Mola", "M-Pesa"):
+		if not frappe.db.exists("Mode of Payment", mop):
+			try:
+				frappe.get_doc({"doctype": "Mode of Payment", "mode_of_payment": mop, "type": "Electronic"}).insert(
+					ignore_permissions=True
+				)
+			except Exception:
+				frappe.log_error(
+					title=f"AI SaaS: Could not create Mode of Payment '{mop}'",
+					message=frappe.get_traceback(),
+				)

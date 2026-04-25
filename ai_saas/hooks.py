@@ -26,9 +26,14 @@ doc_events = {
 	},
 }
 
+website_route_rules = [
+	{"from_route": "/pay/<invoice_name>", "to_route": "pay"},
+]
+
 scheduler_events = {
 	"daily": [
 		"ai_saas.saas.billing_monitor.flag_overdue_customers",
+		"ai_saas.multipay.tasks.sync_pending_payments",
 	],
 	"hourly": [
 		"ai_saas.saas.provisioning.retry_stuck_provisioning",

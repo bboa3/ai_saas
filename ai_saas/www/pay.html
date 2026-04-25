@@ -1,0 +1,1400 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ title or "Pagamento de Fatura — MozEconomia" }}{% endblock %}
+
+{% block head_include %}
+<style>
+  @font-face {
+    font-family: "Gotham";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("/assets/erpnext_mz/fonts/Gotham/GOTHAM-BOLD.woff2") format("woff2")
+  }
+
+  @font-face {
+    font-family: "Gotham";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/assets/erpnext_mz/fonts/Gotham/GOTHAM-BOOK.woff2") format("woff2")
+  }
+
+  :root {
+    --mz-font: "Gotham", "Montserrat", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    --green: #02664D;
+    --green-dark: #01362A;
+    --green-light: #E9F7F6;
+    --green-mid: #9DE1D9;
+    --yellow: #FFC107;
+    --yellow-dark: #e0a800;
+    --yellow-text: #020202;
+    --page-bg: #F0F2F5;
+    --card-bg: #FFFFFF;
+    --surface-2: #F7FAF9;
+    --surface-3: #FAFBFC;
+    --border: #E5E9EE;
+    --border-light: #EEF1F5;
+    --text-primary: #020202;
+    --text-secondary: #1E2A38;
+    --text-muted: #7B8794;
+    --red: #DC3545;
+    --red-bg: rgba(220, 53, 69, .07);
+    --red-border: rgba(220, 53, 69, .22);
+    --amber: #7A5C00;
+    --amber-bg: rgba(255, 193, 7, .10);
+    --amber-border: rgba(255, 193, 7, .30);
+    --shadow-card: 0 2px 8px rgba(0, 0, 0, .06), 0 8px 24px rgba(0, 0, 0, .06);
+    --shadow-modal: 0 16px 48px rgba(0, 0, 0, .18);
+    --radius-card: 18px;
+    --radius-inner: 12px;
+    --radius-pill: 999px;
+    /* ── Type scale (4 steps) ── */
+    --fs-micro: 0.68rem;
+    /* uppercase meta labels */
+    --fs-sm: 0.8rem;
+    /* secondary/muted text  */
+    --fs-base: 0.9rem;
+    /* body, inputs, buttons */
+    --fs-lg: 1rem;
+    /* names, headings       */
+    --fs-disp: 1.2rem;
+    /* payment reference numbers */
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0
+  }
+
+  body,
+  .web-page-container,
+  .container,
+  .page_content {
+    background: transparent !important
+  }
+
+  body {
+    background: var(--page-bg) !important;
+    font-family: var(--mz-font) !important;
+    min-height: 100vh;
+    color: var(--text-primary);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale
+  }
+
+  .navbar,
+  .web-header,
+  footer.web-footer,
+  .footer,
+  .page-header {
+    display: none !important
+  }
+
+  main.page_content {
+    padding: 0 !important
+  }
+
+  /* ── Shell ── */
+  .pay-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px 36px
+  }
+
+  /* ── Logo ── */
+  .pay-wordmark {
+    text-align: center;
+    margin-bottom: 20px;
+    animation: fadeUp .35s ease both
+  }
+
+  .pay-wordmark img {
+    height: 30px
+  }
+
+  .pay-wordmark-fallback {
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text-primary)
+  }
+
+  /* ── Card ── */
+  .pay-card {
+    width: 100%;
+    max-width: 460px;
+    background: var(--card-bg);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    animation: fadeUp .4s .05s ease both;
+    box-shadow: var(--shadow-card);
+    border: 1px solid var(--border)
+  }
+
+  .pay-card-accent {
+    height: 3px;
+    background: linear-gradient(90deg, var(--green) 0%, #2BA891 100%)
+  }
+
+  /* ── Section divider ── */
+  .pay-divider {
+    height: 1px;
+    background: var(--border-light);
+    margin: 0
+  }
+
+  /* ── 1. Issuer row ── */
+  .pay-issuer {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 24px 14px
+  }
+
+  .pay-issuer-label {
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 3px
+  }
+
+  .pay-issuer-name {
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.25
+  }
+
+  .pay-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-top: 2px
+  }
+
+  .pay-status-pill.pending {
+    background: var(--amber-bg);
+    color: var(--amber);
+    border: 1px solid var(--amber-border)
+  }
+
+  .pay-status-pill.paid {
+    background: var(--green-light);
+    color: var(--green);
+    border: 1px solid var(--green-mid)
+  }
+
+  .pay-pill-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor
+  }
+
+  /* ── 2 & 3. Metadata grid (invoice ref + recipient) ── */
+  .pay-recipient {
+    padding: 0 24px 18px
+  }
+
+  .pay-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 24px
+  }
+
+  .pay-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0
+  }
+
+  .pay-meta-item.span-full {
+    grid-column: 1 / -1
+  }
+
+  .pay-meta-label {
+    font-size: var(--fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted)
+  }
+
+  .pay-meta-value {
+    font-size: var(--fs-base);
+    font-weight: 500;
+    color: var(--text-secondary)
+  }
+
+  /* ── 4. Financials ── */
+  .pay-financials {
+    padding: 16px 24px 20px
+  }
+
+  .pay-fin-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding: 7px 0
+  }
+
+  .pay-fin-label {
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
+    font-weight: 600
+  }
+
+  .pay-fin-value {
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap
+  }
+
+  .pay-fin-sep {
+    height: 1px;
+    background: var(--border);
+    margin: 8px 0
+  }
+
+  .pay-fin-row.total {
+    padding-top: 4px
+  }
+
+  .pay-fin-row.total .pay-fin-label {
+    font-weight: 700;
+    color: var(--text-primary)
+  }
+
+  .pay-fin-row.total .pay-fin-value {
+    color: var(--text-primary)
+  }
+
+  .pay-fin-row.outstanding {
+    background: var(--green-light);
+    margin: 10px -24px -20px;
+    padding: 12px 24px 16px;
+    border-top: 1px solid var(--green-mid) !important
+  }
+
+  .pay-fin-row.outstanding .pay-fin-label {
+    font-weight: 700;
+    color: var(--green)
+  }
+
+  .pay-fin-row.outstanding .pay-fin-value {
+    font-size: var(--fs-lg);
+    color: var(--green);
+    font-weight: 700
+  }
+
+  /* ── 5. CTA ── */
+  .pay-cta-section {
+    padding: 20px 24px 24px
+  }
+
+  .pay-cta-main {
+    display: block;
+    width: 100%;
+    padding: 14px 24px;
+    border: none;
+    border-radius: var(--radius-pill);
+    font-family: var(--mz-font);
+    font-size: var(--fs-base);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    background: var(--yellow);
+    color: var(--yellow-text);
+    box-shadow: 0 2px 10px rgba(255, 193, 7, .28);
+    transition: background .15s, transform .1s, box-shadow .15s;
+    text-align: center
+  }
+
+  .pay-cta-main:hover {
+    background: var(--yellow-dark);
+    box-shadow: 0 4px 16px rgba(255, 193, 7, .38);
+    transform: translateY(-1px)
+  }
+
+  .pay-cta-main:active {
+    transform: scale(0.985)
+  }
+
+  .pay-success-msg {
+    display: none;
+    text-align: center;
+    padding: 4px 0;
+    animation: fadeUp .4s ease both
+  }
+
+  .pay-success-ring {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--green-light);
+    border: 2px solid var(--green-mid);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 10px;
+    animation: popIn .4s cubic-bezier(.34, 1.56, .64, 1) both
+  }
+
+  .pay-success-check {
+    color: var(--green);
+    font-size: 1.4rem;
+    line-height: 1
+  }
+
+  .pay-success-title {
+    font-size: var(--fs-base);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 3px
+  }
+
+  .pay-success-sub {
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+    line-height: 1.6
+  }
+
+  /* ── Error / not-found ── */
+  .pay-state-section {
+    padding: 48px 24px;
+    text-align: center
+  }
+
+  .pay-state-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+    font-size: 1.4rem
+  }
+
+  .pay-state-title {
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px
+  }
+
+  .pay-state-sub {
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+    line-height: 1.65
+  }
+
+  /* ── Footer ── */
+  .pay-footer-note {
+    margin-top: 20px;
+    font-size: var(--fs-micro);
+    color: var(--text-muted);
+    text-align: center;
+    animation: fadeUp .5s .15s ease both
+  }
+
+  /* ── PAYMENT MODAL ── */
+  .pay-modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 20, 30, .55);
+    z-index: 200;
+    align-items: flex-end;
+    justify-content: center
+  }
+
+  .pay-modal-backdrop.open {
+    display: flex;
+    animation: fadeIn .2s ease both
+  }
+
+  .pay-modal {
+    width: 100%;
+    max-width: 460px;
+    background: var(--card-bg);
+    border-radius: 24px 24px 0 0;
+    max-height: 92vh;
+    overflow-y: auto;
+    animation: slideUp .28s cubic-bezier(.32, 1, .56, 1) both;
+    display: flex;
+    flex-direction: column
+  }
+
+  .pay-modal-handle {
+    width: 36px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 12px auto 0;
+    flex-shrink: 0
+  }
+
+  .pay-modal-header {
+    display: flex;
+    align-items: center;
+    padding: 14px 20px 13px;
+    border-bottom: 1px solid var(--border-light);
+    gap: 12px;
+    flex-shrink: 0
+  }
+
+  .pay-modal-back {
+    width: 34px;
+    height: 34px;
+    border: none;
+    background: var(--surface-3);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-primary);
+    flex-shrink: 0;
+    transition: background .15s
+  }
+
+  .pay-modal-back:hover {
+    background: var(--border-light)
+  }
+
+  .pay-modal-title {
+    font-size: var(--fs-base);
+    font-weight: 700;
+    color: var(--text-primary);
+    flex: 1
+  }
+
+  .pay-modal-amount {
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--green);
+    white-space: nowrap
+  }
+
+  .pay-modal-body {
+    padding: 20px 20px 32px;
+    flex: 1;
+    overflow-y: auto
+  }
+
+  .pay-modal-section-label {
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 12px
+  }
+
+  /* Method cards */
+  .pay-methods {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px
+  }
+
+  .pay-method-card {
+    flex: 1;
+    max-width: 80px;
+    background: var(--card-bg);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-inner);
+    padding: 14px 10px 10px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, box-shadow .15s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+    user-select: none
+  }
+
+  .pay-method-card:hover {
+    border-color: var(--green-mid);
+    background: var(--surface-3)
+  }
+
+  .pay-method-card.selected {
+    border-color: var(--green);
+    box-shadow: 0 0 0 1px var(--green)
+  }
+
+  .pay-method-card input[type=radio] {
+    display: none
+  }
+
+  .pay-method-logo {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden
+  }
+
+  .pay-method-logo img {
+    width: 44px;
+    height: 44px;
+    object-fit: contain
+  }
+
+  .pay-method-info {
+    flex: 1
+  }
+
+  /* Phone input */
+  .pay-phone-section {
+    display: none;
+    margin-bottom: 18px
+  }
+
+  .pay-phone-wrap {
+    display: flex;
+    align-items: center;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-inner);
+    overflow: hidden;
+    transition: border-color .15s
+  }
+
+  .pay-phone-wrap:focus-within {
+    border-color: var(--green)
+  }
+
+  .pay-phone-prefix {
+    padding: 13px 10px 13px 14px;
+    font-size: var(--fs-base);
+    font-weight: 700;
+    color: var(--text-muted);
+    background: var(--surface-3);
+    border-right: 1px solid var(--border-light);
+    white-space: nowrap;
+    user-select: none
+  }
+
+  .pay-phone-input {
+    flex: 1;
+    padding: 13px 14px;
+    border: none;
+    outline: none;
+    font-family: var(--mz-font);
+    font-size: var(--fs-base);
+    color: var(--text-primary);
+    background: transparent;
+    font-variant-numeric: tabular-nums;
+    min-width: 0
+  }
+
+  .pay-phone-input::placeholder {
+    color: var(--text-faint)
+  }
+
+  .pay-method-name {
+    font-size: var(--fs-base);
+    font-weight: 700;
+    color: var(--text-primary);
+    display: block;
+    margin-bottom: 1px
+  }
+
+  .pay-method-desc {
+    font-size: var(--fs-micro);
+    color: var(--text-muted);
+    display: block
+  }
+
+  .pay-method-check {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color .15s, background .15s
+  }
+
+  .pay-method-card.selected .pay-method-check {
+    background: var(--green);
+    border-color: var(--green)
+  }
+
+  .pay-method-check-inner {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #fff;
+    opacity: 0;
+    transition: opacity .15s
+  }
+
+  .pay-method-card.selected .pay-method-check-inner {
+    opacity: 1
+  }
+
+  /* CTA in modal */
+  .pay-cta {
+    width: 100%;
+    padding: 14px 24px;
+    border: none;
+    border-radius: var(--radius-pill);
+    font-family: var(--mz-font);
+    font-size: var(--fs-base);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: background .15s, transform .1s, box-shadow .15s
+  }
+
+  .pay-cta:active {
+    transform: scale(0.985)
+  }
+
+  .pay-cta:disabled {
+    background: var(--border-light) !important;
+    color: var(--text-faint) !important;
+    cursor: not-allowed;
+    box-shadow: none !important;
+    transform: none !important;
+    border: none
+  }
+
+  .pay-cta.ready {
+    background: var(--yellow);
+    color: var(--yellow-text);
+    box-shadow: 0 2px 10px rgba(255, 193, 7, .28)
+  }
+
+  .pay-cta.ready:hover {
+    background: var(--yellow-dark);
+    box-shadow: 0 4px 16px rgba(255, 193, 7, .38);
+    transform: translateY(-1px)
+  }
+
+  .pay-spinner {
+    display: inline-block;
+    width: 15px;
+    height: 15px;
+    border: 2px solid rgba(30, 42, 56, .2);
+    border-top-color: var(--text-primary);
+    border-radius: 50%;
+    animation: spin .65s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg)
+    }
+  }
+
+  .pay-error {
+    display: none;
+    margin-bottom: 14px;
+    padding: 11px 14px;
+    border-radius: 8px;
+    background: var(--red-bg);
+    border: 1px solid var(--red-border);
+    font-size: var(--fs-sm);
+    color: var(--red);
+    line-height: 1.5
+  }
+
+  /* Reference panel */
+  .pay-ref-section {
+    display: none
+  }
+
+  .pay-ref-intro {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+    margin-bottom: 12px
+  }
+
+  .pay-ref-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px
+  }
+
+  .pay-ref-cell {
+    background: var(--green-light);
+    border: 1px solid var(--green-mid);
+    border-radius: var(--radius-inner);
+    padding: 14px 12px;
+    text-align: center
+  }
+
+  .pay-ref-cell .rc-label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--green);
+    font-weight: 700;
+    margin-bottom: 5px
+  }
+
+  .pay-ref-cell .rc-value {
+    font-size: 1.35rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    letter-spacing: 0.03em;
+    line-height: 1.2
+  }
+
+  .pay-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 18px
+  }
+
+  .pay-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px
+  }
+
+  .pay-step-num {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px
+  }
+
+  .pay-step-text {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    line-height: 1.5
+  }
+
+  .pay-step-text strong {
+    color: var(--text-primary);
+    font-weight: 700
+  }
+
+  .pay-pay-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    padding: 12px 18px;
+    border-radius: var(--radius-inner);
+    font-size: 0.86rem;
+    font-weight: 600;
+    transition: all .35s ease;
+    margin-bottom: 16px
+  }
+
+  .pay-pay-status.pending {
+    background: var(--amber-bg);
+    border: 1px solid var(--amber-border);
+    color: var(--amber)
+  }
+
+  .pay-pay-status.paid {
+    background: var(--green-light);
+    border: 1px solid var(--green-mid);
+    color: var(--green)
+  }
+
+  .pay-pay-status.failed {
+    background: var(--red-bg);
+    border: 1px solid var(--red-border);
+    color: var(--red)
+  }
+
+  .pay-pulse {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 1.8s ease-in-out infinite;
+    flex-shrink: 0
+  }
+
+  .paid .pay-pulse,
+  .failed .pay-pulse {
+    animation: none
+  }
+
+  @keyframes pulse {
+    0% {
+      box-shadow: 0 0 0 0 currentColor;
+      opacity: 1
+    }
+
+    70% {
+      box-shadow: 0 0 0 7px transparent;
+      opacity: .7
+    }
+
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+      opacity: 1
+    }
+  }
+
+  /* Animations */
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(8px)
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0)
+    }
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0
+    }
+
+    to {
+      opacity: 1
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(100%)
+    }
+
+    to {
+      transform: translateY(0)
+    }
+  }
+
+  @keyframes popIn {
+    from {
+      transform: scale(.6);
+      opacity: 0
+    }
+
+    to {
+      transform: scale(1);
+      opacity: 1
+    }
+  }
+
+  /* Desktop */
+  @media (min-width:521px) {
+    .pay-modal-backdrop {
+      align-items: center
+    }
+
+    .pay-modal {
+      border-radius: var(--radius-card);
+      max-height: 85vh
+    }
+
+    .pay-modal-handle {
+      display: none
+    }
+  }
+
+  /* Mobile */
+  @media (max-width:520px) {
+    .pay-shell {
+      padding: 24px 12px 48px
+    }
+
+    .pay-issuer,
+    .pay-recipient,
+    .pay-financials,
+    .pay-cta-section,
+    .pay-state-section {
+      padding-left: 18px;
+      padding-right: 18px
+    }
+
+    .pay-fin-row.outstanding {
+      margin-left: -18px;
+      margin-right: -18px;
+      padding-left: 18px;
+      padding-right: 18px
+    }
+  }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div class="pay-shell" data-invoice="{{ invoice_name | e }}" data-token="{{ token | e }}"
+  data-latest-pr="{{ ((invoice.mz_latest_multipay_request if invoice else '') or '') | e }}"
+  data-csrf="{{ frappe.session.csrf_token | e }}" id="pay-shell">
+
+  <div class="pay-wordmark">
+    <img src="/assets/erpnext_mz/images/logo.svg" alt="MozEconomia Cloud"
+      onerror="this.parentNode.querySelector('.pay-wordmark-fallback').style.display='block';this.style.display='none'">
+    <div class="pay-wordmark-fallback" style="display:none">MozEconomia Cloud</div>
+  </div>
+
+  <div class="pay-card" id="pay-info-card">
+    <div class="pay-card-accent"></div>
+
+    {% if not_found %}
+    <div class="pay-state-section">
+      <div class="pay-state-title">Fatura não encontrada</div>
+      <p class="pay-state-sub">O link que acedeu é inválido ou a fatura referida não existe no sistema.</p>
+    </div>
+
+    {% elif invalid_token %}
+    <div class="pay-state-section">
+      <div class="pay-state-title">Link inválido</div>
+      <p class="pay-state-sub">Este link de pagamento é inválido ou expirou.<br>Solicite um novo link à empresa
+        emissora.</p>
+    </div>
+
+    {% else %}
+
+    {# 1 — Issuer + status #}
+    <div class="pay-issuer">
+      <div>
+        <div class="pay-issuer-label">Emitido por</div>
+        <div class="pay-issuer-name">{{ invoice.company }}</div>
+      </div>
+      {% if already_paid %}
+      <span class="pay-status-pill paid" id="pay-status-badge"><span class="pay-pill-dot"></span>Pago</span>
+      {% else %}
+      <span class="pay-status-pill pending" id="pay-status-badge"><span class="pay-pill-dot"></span>Pendente</span>
+      {% endif %}
+    </div>
+
+    {# 2+3 — Invoice ref + Recipient metadata grid #}
+    <div class="pay-recipient">
+      <div class="pay-meta-grid">
+        <div class="pay-meta-item">
+          <span class="pay-meta-label">Número</span>
+          <span class="pay-meta-value">{{ invoice_name }}</span>
+        </div>
+        {% if invoice.posting_date %}
+        <div class="pay-meta-item">
+          <span class="pay-meta-label">Data de emissão</span>
+          <span class="pay-meta-value">{{ invoice.posting_date }}</span>
+        </div>
+        {% endif %}
+        {% if invoice.due_date %}
+        <div class="pay-meta-item">
+          <span class="pay-meta-label">Data de vencimento</span>
+          <span class="pay-meta-value">{{ invoice.due_date }}</span>
+        </div>
+        {% endif %}
+        <div class="pay-meta-item">
+          <span class="pay-meta-label">Cliente</span>
+          <span class="pay-meta-value">{{ invoice.customer_name }}</span>
+        </div>
+        {% if invoice.customer_tax_id %}
+        <div class="pay-meta-item span-full">
+          <span class="pay-meta-label">NUIT do Cliente</span>
+          <span class="pay-meta-value">{{ invoice.customer_tax_id }}</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="pay-divider"></div>
+
+    {# 4 — Financials #}
+    <div class="pay-financials">
+      <div class="pay-fin-row">
+        <span class="pay-fin-label">Subtotal</span>
+        <span class="pay-fin-value">{{ invoice.currency }} {{ "{:,.2f}".format(invoice.net_total or 0) }}</span>
+      </div>
+      {% if invoice.total_taxes_and_charges %}
+      <div class="pay-fin-row">
+        <span class="pay-fin-label">{{ invoice.tax_category or invoice.taxes_and_charges or "Impostos" }}</span>
+        <span class="pay-fin-value">{{ invoice.currency }} {{ "{:,.2f}".format(invoice.total_taxes_and_charges or 0)
+          }}</span>
+      </div>
+      {% endif %}
+      <div class="pay-fin-sep"></div>
+      <div class="pay-fin-row total">
+        <span class="pay-fin-label">Total</span>
+        <span class="pay-fin-value">{{ invoice.currency }} {{ "{:,.2f}".format(invoice.grand_total or 0) }}</span>
+      </div>
+      <div class="pay-fin-row outstanding">
+        <span class="pay-fin-label">Valor em aberto</span>
+        <span class="pay-fin-value">{{ invoice.currency }} {{ "{:,.2f}".format(invoice.outstanding_amount or 0)
+          }}</span>
+      </div>
+    </div>
+
+    {# 5 — CTA #}
+    <div class="pay-cta-section">
+      {% if not already_paid %}
+      <button class="pay-cta-main" id="pay-invoice-btn">Pagar Fatura</button>
+      {% endif %}
+      <div class="pay-success-msg" id="pay-success-msg">
+        <div class="pay-success-ring"><span class="pay-success-check">✓</span></div>
+        <div class="pay-success-title">Pagamento confirmado</div>
+        <p class="pay-success-sub">A fatura foi liquidada com sucesso.<br>Obrigado pela sua confiança.</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="pay-footer-note">Processado por MozEconomia Cloud · Pagamento seguro e encriptado</div>
+
+</div>
+
+{% if not not_found and not invalid_token and not already_paid %}
+<div class="pay-modal-backdrop" id="pay-modal-backdrop">
+  <div class="pay-modal" role="dialog" aria-modal="true" aria-label="Método de Pagamento">
+
+    <div class="pay-modal-handle"></div>
+
+    <div class="pay-modal-header">
+      <button class="pay-modal-back" id="pay-modal-close" aria-label="Fechar">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+        </svg>
+      </button>
+      <span class="pay-modal-title">Método de Pagamento</span>
+      <span class="pay-modal-amount">{{ invoice.currency }} {{ "{:,.2f}".format(invoice.outstanding_amount or 0)
+        }}</span>
+    </div>
+
+    <div class="pay-modal-body">
+
+      <div id="mp-form">
+        <div class="pay-modal-section-label">Canal de pagamento</div>
+        <div class="pay-methods">
+          <label class="pay-method-card mpesa" id="label-mpesa">
+            <input type="radio" name="method" value="M-Pesa" id="method-mpesa" checked>
+            <div class="pay-method-logo">
+              <img src="/assets/ai_saas/images/m-pesa.png" alt="M-Pesa">
+            </div>
+            <div class="pay-method-check">
+              <div class="pay-method-check-inner"></div>
+            </div>
+          </label>
+          <label class="pay-method-card emola" id="label-emola">
+            <input type="radio" name="method" value="E-Mola" id="method-emola">
+            <div class="pay-method-logo">
+              <img src="/assets/ai_saas/images/e-mola.png" alt="E-Mola">
+            </div>
+            <div class="pay-method-check">
+              <div class="pay-method-check-inner"></div>
+            </div>
+          </label>
+        </div>
+        <div class="pay-phone-section" id="mp-phone-section">
+          <div class="pay-modal-section-label" id="mp-phone-label">Número de telefone</div>
+          <div class="pay-phone-wrap">
+            <span class="pay-phone-prefix">+258</span>
+            <input type="tel" id="mp-phone" class="pay-phone-input" placeholder="84 000 0000" maxlength="12"
+              inputmode="numeric">
+          </div>
+        </div>
+        <div class="pay-error" id="mp-error"></div>
+        <button class="pay-cta" id="mp-pay-btn" disabled>Seleccione o canal para continuar</button>
+      </div>
+
+      <div class="pay-ref-section" id="mp-ref-panel">
+        <div class="pay-ref-intro">Referência de pagamento gerada</div>
+        <div class="pay-ref-grid">
+          <div class="pay-ref-cell">
+            <div class="rc-label">Entidade</div>
+            <div class="rc-value" id="mp-entity">—</div>
+          </div>
+          <div class="pay-ref-cell">
+            <div class="rc-label">Referência</div>
+            <div class="rc-value" id="mp-reference">—</div>
+          </div>
+        </div>
+        <div class="pay-steps">
+          <div class="pay-step">
+            <div class="pay-step-num">1</div>
+            <div class="pay-step-text">Abra a app <strong id="mp-method-label">—</strong> no seu telemóvel.</div>
+          </div>
+          <div class="pay-step">
+            <div class="pay-step-num">2</div>
+            <div class="pay-step-text">Seleccione <strong>Pagamentos</strong> → <strong>Pagamentos de serviços</strong>.
+            </div>
+          </div>
+          <div class="pay-step">
+            <div class="pay-step-num">3</div>
+            <div class="pay-step-text">Introduza a <strong>Entidade</strong> e a <strong>Referência</strong> acima.
+            </div>
+          </div>
+          <div class="pay-step">
+            <div class="pay-step-num">4</div>
+            <div class="pay-step-text">Confirme <strong>{{ invoice.currency }} {{
+                "{:,.2f}".format(invoice.outstanding_amount or 0) }}</strong> e autorize com o seu PIN.</div>
+          </div>
+        </div>
+        <div class="pay-pay-status pending" id="mp-status">
+          <span class="pay-pulse"></span>
+          <span id="mp-status-text">A aguardar confirmação do pagamento…</span>
+        </div>
+        <button class="pay-cta ready" id="mp-retry-btn" style="display:none;margin-top:12px"
+          onclick="location.reload()">
+          Tentar com outro canal
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+  (function () {
+    var shell = document.getElementById("pay-shell");
+    var INVOICE = shell ? shell.dataset.invoice : "";
+    var TOKEN = shell ? shell.dataset.token : "";
+    var LATEST_PR = shell ? shell.dataset.latestPr : "";
+    var CSRF = shell ? (shell.dataset.csrf || "") : "";
+
+    var methodCards = document.querySelectorAll(".pay-method-card");
+    var radios = document.querySelectorAll("input[name=method]");
+    var payBtn = document.getElementById("mp-pay-btn");
+    var errBox = document.getElementById("mp-error");
+    var form = document.getElementById("mp-form");
+    var panel = document.getElementById("mp-ref-panel");
+    var backdrop = document.getElementById("pay-modal-backdrop");
+    var invoiceBtn = document.getElementById("pay-invoice-btn");
+    var modalClose = document.getElementById("pay-modal-close");
+    var statusBadge = document.getElementById("pay-status-badge");
+    var successMsg = document.getElementById("pay-success-msg");
+    var phoneSection = document.getElementById("mp-phone-section");
+    var phoneInput = document.getElementById("mp-phone");
+    var phoneLabel = document.getElementById("mp-phone-label");
+    var pollTimer = null;
+    var submitting = false;
+
+    /* ── fetch helper (replaces frappe.call — not available on website pages) ── */
+    function apiCall(method, args, onOk, onErr) {
+      var body = new URLSearchParams();
+      Object.keys(args).forEach(function (k) { body.append(k, args[k]); });
+      fetch("/api/method/" + method, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Frappe-CSRF-Token": CSRF },
+        body: body.toString()
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (data.exc) { if (onErr) onErr(data.exc); return; }
+          if (onOk) onOk(data.message);
+        })
+        .catch(function (e) { if (onErr) onErr(e.message || "Erro de comunicação"); });
+    }
+
+    /* ── modal ── */
+    function openModal() { if (!backdrop) return; backdrop.classList.add("open"); document.body.style.overflow = "hidden"; }
+    function closeModal() { if (!backdrop) return; backdrop.classList.remove("open"); document.body.style.overflow = ""; }
+
+    if (invoiceBtn) invoiceBtn.addEventListener("click", openModal);
+    if (modalClose) modalClose.addEventListener("click", closeModal);
+    if (backdrop) backdrop.addEventListener("click", function (e) { if (e.target === backdrop) closeModal(); });
+
+    /* ── auto-resume pending request ── */
+    if (payBtn && LATEST_PR) {
+      apiCall("ai_saas.multipay.api.get_payment_status", { payment_request: LATEST_PR, token: TOKEN },
+        function (msg) {
+          if (!msg) return;
+          if (msg.status === "Paid") { showSuccess(); return; }
+          if (msg.status === "Pending") {
+            if (msg.entity) document.getElementById("mp-entity").textContent = msg.entity;
+            if (msg.reference) document.getElementById("mp-reference").textContent = msg.reference;
+            lockForm();
+            form.style.display = "none";
+            panel.style.display = "block";
+            openModal();
+            startPolling(LATEST_PR);
+          }
+        },
+        function () { }
+      );
+    }
+
+    if (!payBtn) return;
+
+    /* ── phone validation ── */
+    function isPhoneValid(val) {
+      return /^[0-9]{8,9}$/.test((val || "").replace(/[\s\-]/g, ""));
+    }
+
+    function updateBtn() {
+      var sel = document.querySelector("input[name=method]:checked");
+      if (!sel) {
+        payBtn.disabled = true; payBtn.classList.remove("ready");
+        payBtn.textContent = "Seleccione o canal para continuar"; return;
+      }
+      if (!isPhoneValid(phoneInput ? phoneInput.value : "")) {
+        payBtn.disabled = true; payBtn.classList.remove("ready");
+        payBtn.textContent = "Introduza o número de telefone"; return;
+      }
+      payBtn.disabled = false; payBtn.classList.add("ready");
+      payBtn.textContent = "Pagar Agora";
+    }
+
+    var METHOD_META = {
+      "E-Mola": { label: "Número E-Mola", placeholder: "87 000 0000" },
+      "M-Pesa": { label: "Número M-Pesa", placeholder: "84 000 0000" }
+    };
+
+    /* ── method selection ── */
+    radios.forEach(function (r) {
+      r.addEventListener("change", function () {
+        if (submitting) return;
+        methodCards.forEach(function (c) { c.classList.remove("selected"); });
+        r.closest("label").classList.add("selected");
+        var meta = METHOD_META[r.value] || {};
+        if (phoneLabel) phoneLabel.textContent = meta.label || "Número de telefone";
+        if (phoneInput) phoneInput.placeholder = meta.placeholder || "84 000 0000";
+        if (phoneSection) phoneSection.style.display = "block";
+        if (phoneInput) { phoneInput.value = ""; phoneInput.focus(); }
+        updateBtn();
+      });
+    });
+
+    if (phoneInput) {
+      phoneInput.addEventListener("input", updateBtn);
+      phoneInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); if (!payBtn.disabled) payBtn.click(); }
+      });
+    }
+
+    /* ── pay ── */
+    payBtn.addEventListener("click", function () {
+      if (submitting) return;
+      var sel = document.querySelector("input[name=method]:checked");
+      if (!sel) return;
+      var phone = phoneInput ? phoneInput.value.replace(/[\s\-]/g, "") : "";
+      if (!isPhoneValid(phone)) { showError("Introduza um número de telefone válido (8 ou 9 dígitos)."); return; }
+      var phoneWithCode = "258" + phone;
+
+      submitting = true; lockForm();
+      if (phoneInput) phoneInput.disabled = true;
+      payBtn.disabled = true;
+      payBtn.innerHTML = '<span class="pay-spinner"></span>A processar…';
+      errBox.style.display = "none";
+
+      apiCall(
+        "ai_saas.multipay.api.initiate_payment",
+        { invoice_name: INVOICE, token: TOKEN, method: sel.value, phone_number: phoneWithCode },
+        function (msg) {
+          if (!msg) { resetAfterError("Erro inesperado. Por favor tente novamente."); return; }
+          document.getElementById("mp-entity").textContent = msg.entity || "—";
+          document.getElementById("mp-reference").textContent = msg.reference || "—";
+          document.getElementById("mp-method-label").textContent = sel.value;
+          form.style.display = "none";
+          panel.style.display = "block";
+          startPolling(msg.payment_request);
+        },
+        function (err) { resetAfterError(err || "Erro ao gerar referência. Por favor tente novamente."); }
+      );
+    });
+
+    function resetAfterError(msg) {
+      submitting = false; unlockForm();
+      if (phoneInput) phoneInput.disabled = false;
+      showError(msg);
+      payBtn.disabled = false; payBtn.classList.add("ready"); payBtn.textContent = "Pagar Agora";
+    }
+
+    /* ── polling ── */
+    function startPolling(prName) {
+      pollTimer = setInterval(function () {
+        apiCall("ai_saas.multipay.api.get_payment_status", { payment_request: prName, token: TOKEN },
+          function (msg) {
+            if (!msg) return;
+            if (msg.status === "Paid") { clearInterval(pollTimer); showSuccess(); }
+            if (msg.status === "Failed") { clearInterval(pollTimer); showFailed(); }
+          },
+          function () { }
+        );
+      }, 5000);
+    }
+
+    /* ── state ── */
+    function showSuccess() {
+      clearInterval(pollTimer); closeModal();
+      if (statusBadge) { statusBadge.className = "pay-status-pill paid"; statusBadge.innerHTML = '<span class="pay-pill-dot"></span>Pago'; }
+      if (invoiceBtn) invoiceBtn.style.display = "none";
+      if (successMsg) successMsg.style.display = "block";
+    }
+
+    function showFailed() {
+      var el = document.getElementById("mp-status");
+      var tx = document.getElementById("mp-status-text");
+      if (el) { el.className = "pay-pay-status failed"; var p = el.querySelector(".pay-pulse"); if (p) p.style.animation = "none"; }
+      if (tx) tx.textContent = "Pagamento não efectuado.";
+      var rb = document.getElementById("mp-retry-btn");
+      if (rb) rb.style.display = "block";
+    }
+
+    function lockForm() { methodCards.forEach(function (c) { c.style.pointerEvents = "none"; c.style.opacity = "0.45"; }); }
+    function unlockForm() { methodCards.forEach(function (c) { c.style.pointerEvents = ""; c.style.opacity = ""; }); }
+    function showError(msg) { errBox.textContent = msg; errBox.style.display = "block"; }
+
+    /* ── initialise default selection (M-Pesa checked in HTML) ── */
+    (function () {
+      var defaultRadio = document.querySelector("input[name=method]:checked");
+      if (defaultRadio) {
+        methodCards.forEach(function (c) { c.classList.remove("selected"); });
+        defaultRadio.closest("label").classList.add("selected");
+        var meta = METHOD_META[defaultRadio.value] || {};
+        if (phoneLabel) phoneLabel.textContent = meta.label || "Número de telefone";
+        if (phoneInput) phoneInput.placeholder = meta.placeholder || "84 000 0000";
+        if (phoneSection) phoneSection.style.display = "block";
+      }
+    })();
+  })();
+</script>
+{% endblock %}
