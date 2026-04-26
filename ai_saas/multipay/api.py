@@ -15,6 +15,11 @@ import json
 
 import frappe
 from frappe import _
+from erpnext_mz.qr_code.qr_generator import validate_document_hash as _validate_token
+
+
+def _validate_invoice_token(invoice_name: str, token: str) -> bool:
+	return _validate_token("Sales Invoice", invoice_name, token)
 
 
 # ---------------------------------------------------------------------------
@@ -28,9 +33,7 @@ def get_payment_page_data(invoice_name: str, token: str) -> dict:
 
 	Token is validated before any DB access.
 	"""
-	from ai_saas.multipay.tokens import validate_payment_token
-
-	if not validate_payment_token(invoice_name, token):
+	if not _validate_invoice_token(invoice_name, token):
 		frappe.throw(_("Link de pagamento inválido ou expirado."), frappe.PermissionError)
 
 	inv = frappe.db.get_value(
@@ -63,9 +66,7 @@ def initiate_payment(invoice_name: str, token: str, method: str, phone_number: s
 	return it instead of creating a new one (even if SISLOG hasn't responded yet).
 	"""
 	from ai_saas.multipay.client import request_reference
-	from ai_saas.multipay.tokens import validate_payment_token
-
-	if not validate_payment_token(invoice_name, token):
+	if not _validate_invoice_token(invoice_name, token):
 		frappe.throw(_("Link de pagamento inválido ou expirado."), frappe.PermissionError)
 
 	if method not in ("E-Mola", "M-Pesa"):
@@ -168,8 +169,6 @@ def get_payment_status(payment_request: str, token: str) -> dict:
 
 	Requires the invoice token to prevent unauthenticated enumeration of PR data.
 	"""
-	from ai_saas.multipay.tokens import validate_payment_token
-
 	pr = frappe.db.get_value(
 		"Payment Request",
 		payment_request,
@@ -180,7 +179,7 @@ def get_payment_status(payment_request: str, token: str) -> dict:
 	if not pr:
 		frappe.throw(_("Pedido de pagamento não encontrado."), frappe.DoesNotExistError)
 
-	if not validate_payment_token(pr.reference_name, token):
+	if not _validate_invoice_token(pr.reference_name, token):
 		frappe.throw(_("Link de pagamento inválido ou expirado."), frappe.PermissionError)
 
 	return {

@@ -11,7 +11,8 @@
 		"username",
 		"api_key",
 		"callback_token",
-		"payment_account"
+		"payment_account",
+		"absa_bank_account"
 	],
 	"fields": [
 		{
@@ -48,6 +49,13 @@
 			"label": "Conta de Recebimento",
 			"options": "Account",
 			"description": "Conta contabilística onde os pagamentos Multipay são registados"
+		},
+		{
+			"fieldname": "absa_bank_account",
+			"fieldtype": "Link",
+			"label": "Conta Bancária ABSA (Transferência)",
+			"options": "Bank Account",
+			"description": "Conta bancária ABSA exibida aos clientes para transferência directa"
 		}
 	],
 	"index_web_pages_for_search": 0,

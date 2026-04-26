@@ -26,9 +26,6 @@ doc_events = {
 	},
 }
 
-website_route_rules = [
-	{"from_route": "/pay/<invoice_name>", "to_route": "pay"},
-]
 
 scheduler_events = {
 	"daily": [
