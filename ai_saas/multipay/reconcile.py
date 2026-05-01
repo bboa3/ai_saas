@@ -1,4 +1,4 @@
-"""Background job: create and submit a Payment Entry for a paid Multipay Payment Request."""
+"""Background job: create and submit a Payment Entry for a paid ERPNext Payment Request."""
 
 import frappe
 

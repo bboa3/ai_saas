@@ -10,6 +10,7 @@
 		"base_url",
 		"username",
 		"api_key",
+		"require_callback_token",
 		"callback_token",
 		"payment_account",
 		"absa_bank_account"
@@ -38,6 +39,14 @@
 			"label": "Chave API (32 caracteres)"
 		},
 		{
+			"default": "0",
+			"fieldname": "require_callback_token",
+			"fieldtype": "Check",
+			"label": "Requer Token de Callback",
+			"description": "Se activado, o SISLOG deve incluir o token secreto no URL de callback. Desactive se o SISLOG não enviar token."
+		},
+		{
+			"depends_on": "eval:doc.require_callback_token == 1",
 			"fieldname": "callback_token",
 			"fieldtype": "Password",
 			"label": "Token de Callback",
@@ -61,7 +70,7 @@
 	"index_web_pages_for_search": 0,
 	"issingle": 1,
 	"links": [],
-	"modified": "2026-04-21 00:00:00.000000",
+	"modified": "2026-05-01 00:00:00.000000",
 	"modified_by": "Administrator",
 	"module": "AI SaaS",
 	"name": "Multipay Settings",

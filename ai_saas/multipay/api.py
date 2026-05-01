@@ -15,6 +15,7 @@ import json
 
 import frappe
 from frappe import _
+from frappe.utils import cint
 from erpnext_mz.qr_code.qr_generator import validate_document_hash as _validate_token
 
 
@@ -214,13 +215,20 @@ def payment_callback() -> dict:
 
 	# Validate secret token — constant-time comparison prevents timing attacks.
 	# Always return 200 regardless: never reveal token validity to probers.
-	provided_token = args.get("token") or ""
+	# When require_callback_token == 0 (default), skip token validation entirely
+	# because SISLOG does not include a token in its payment notification requests.
 	try:
-		stored_token = frappe.get_single("Multipay Settings").get_password("callback_token") or ""
+		_settings = frappe.get_single("Multipay Settings")
+		require_token = cint(_settings.get("require_callback_token"))
+		stored_token = _settings.get_password("callback_token") or "" if require_token else ""
 	except Exception:
+		require_token = 0
 		stored_token = ""
-	if not stored_token or not _hmac.compare_digest(provided_token, stored_token):
-		return {"status": "ok"}
+
+	if require_token:
+		provided_token = args.get("token") or ""
+		if not stored_token or not _hmac.compare_digest(provided_token, stored_token):
+			return {"status": "ok"}
 
 	transaction_id = args.get("transactionId") or ""
 	entity = args.get("entity") or ""
