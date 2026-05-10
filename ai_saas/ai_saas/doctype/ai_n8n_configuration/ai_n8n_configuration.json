@@ -11,8 +11,6 @@
 		"column_break_conn",
 		"webhook_secret",
 		"enable_webhook",
-		"escalation_contact",
-		"default_workflow",
 		"scoring_section",
 		"weight_severidade_dor",
 		"weight_impacto_financeiro",
@@ -20,6 +18,9 @@
 		"column_break_scoring",
 		"weight_maturidade_cliente",
 		"weight_fit_fiscal_mz",
+		"scoring_formula",
+		"normalization_section",
+		"normalization_map",
 		"thresholds_section",
 		"threshold_upsell_premium",
 		"threshold_upsell_standard",
@@ -27,8 +28,16 @@
 		"threshold_triagem_necessaria",
 		"routing_section",
 		"routing_rules",
+		"error_section",
+		"default_workflow",
+		"escalation_contact",
+		"column_break_error",
+		"missing_data_workflow",
+		"missing_data_notification",
 		"ai_section",
-		"ai_prompts"
+		"ai_prompt_proposta_comercial",
+		"ai_prompt_email_ativacao",
+		"ai_prompt_fallback"
 	],
 	"fields": [
 		{
@@ -40,8 +49,7 @@
 			"fieldname": "n8n_base_url",
 			"fieldtype": "Data",
 			"label": "URL Base N8N",
-			"description": "Ex: https://n8n.mozeconomia.co.mz",
-			"reqd": 0
+			"description": "Ex: https://n8n.mozeconomia.co.mz"
 		},
 		{
 			"fieldname": "n8n_api_key",
@@ -66,29 +74,17 @@
 			"description": "Desligar para suspender todos os envios para N8N"
 		},
 		{
-			"fieldname": "escalation_contact",
-			"fieldtype": "Data",
-			"label": "Contacto de Escalada",
-			"options": "Email",
-			"description": "Email para notificações de erro de routing"
-		},
-		{
-			"fieldname": "default_workflow",
-			"fieldtype": "Data",
-			"label": "Workflow Padrão (ID)",
-			"description": "ID do workflow N8N usado como fallback"
-		},
-		{
 			"fieldname": "scoring_section",
 			"fieldtype": "Section Break",
-			"label": "Pesos do Motor de Scoring"
+			"label": "Motor de Scoring — Pesos"
 		},
 		{
 			"fieldname": "weight_severidade_dor",
 			"fieldtype": "Float",
 			"label": "Peso — Severidade da Dor",
 			"default": "0.30",
-			"precision": "2"
+			"precision": "2",
+			"description": "Soma de todos os pesos deve ser 1.0"
 		},
 		{
 			"fieldname": "weight_impacto_financeiro",
@@ -123,6 +119,26 @@
 			"precision": "2"
 		},
 		{
+			"fieldname": "scoring_formula",
+			"fieldtype": "Small Text",
+			"label": "Fórmula de Scoring",
+			"read_only": 1,
+			"default": "score = (w1×n(sev) + w2×n(imp) + w3×n(gap) + w4×n(mat) + w5×n(fisc)) × 10",
+			"description": "Referência — edite os pesos acima para alterar o comportamento"
+		},
+		{
+			"fieldname": "normalization_section",
+			"fieldtype": "Section Break",
+			"label": "Normalização de Scores",
+			"description": "Mapas de conversão de valores qualitativos para scores numéricos (0–1)"
+		},
+		{
+			"fieldname": "normalization_map",
+			"fieldtype": "JSON",
+			"label": "Mapa de Normalização",
+			"description": "JSON com chaves: risco_fiscal_mz, maturidade_digital, recorrencia_faturacao — cada uma mapeando valores para floats 0–1"
+		},
+		{
 			"fieldname": "thresholds_section",
 			"fieldtype": "Section Break",
 			"label": "Limiares de Decisão"
@@ -132,14 +148,16 @@
 			"fieldtype": "Float",
 			"label": "Limiar Upsell Premium",
 			"default": "8.0",
-			"precision": "1"
+			"precision": "1",
+			"description": "Score ≥ este valor activa wf_upsell_premium"
 		},
 		{
 			"fieldname": "threshold_upsell_standard",
 			"fieldtype": "Float",
 			"label": "Limiar Upsell Standard",
 			"default": "6.0",
-			"precision": "1"
+			"precision": "1",
+			"description": "Score ≥ este valor activa wf_upsell_standard"
 		},
 		{
 			"fieldname": "column_break_thresh",
@@ -150,7 +168,8 @@
 			"fieldtype": "Float",
 			"label": "Limiar Triagem Necessária",
 			"default": "4.0",
-			"precision": "1"
+			"precision": "1",
+			"description": "Score < este valor envia para triagem manual"
 		},
 		{
 			"fieldname": "routing_section",
@@ -161,23 +180,69 @@
 			"fieldname": "routing_rules",
 			"fieldtype": "JSON",
 			"label": "Routing Rules",
-			"description": "Array JSON: [{priority, condition, workflow_id, description}]"
+			"description": "Array JSON ordenado por prioridade: [{priority, condition: {field, operator, value}, workflow_id, description}]"
+		},
+		{
+			"fieldname": "error_section",
+			"fieldtype": "Section Break",
+			"label": "Tratamento de Erros e Escalada"
+		},
+		{
+			"fieldname": "default_workflow",
+			"fieldtype": "Data",
+			"label": "Workflow Padrão (ID)",
+			"description": "ID do workflow N8N usado como fallback quando nenhuma regra de routing coincide"
+		},
+		{
+			"fieldname": "escalation_contact",
+			"fieldtype": "Data",
+			"label": "Contacto de Escalada",
+			"options": "Email",
+			"description": "Email para notificações de erro de routing"
+		},
+		{
+			"fieldname": "column_break_error",
+			"fieldtype": "Column Break"
+		},
+		{
+			"fieldname": "missing_data_workflow",
+			"fieldtype": "Data",
+			"label": "Workflow — Dados Incompletos",
+			"description": "Workflow N8N activado quando campos obrigatórios do segmento estão em falta"
+		},
+		{
+			"fieldname": "missing_data_notification",
+			"fieldtype": "Data",
+			"label": "Canal de Notificação — Dados Incompletos",
+			"description": "Ex: slack_onboarding_team"
 		},
 		{
 			"fieldname": "ai_section",
 			"fieldtype": "Section Break",
-			"label": "Configuração de IA"
+			"label": "Configuração de IA — Prompts"
 		},
 		{
-			"fieldname": "ai_prompts",
-			"fieldtype": "JSON",
-			"label": "Prompts de IA",
-			"description": "Objecto JSON: {proposta_comercial, email_ativacao, fallback_proposal}"
+			"fieldname": "ai_prompt_proposta_comercial",
+			"fieldtype": "Small Text",
+			"label": "Prompt — Proposta Comercial",
+			"description": "Template do prompt para geração de proposta. Use {segmento} como variável."
+		},
+		{
+			"fieldname": "ai_prompt_email_ativacao",
+			"fieldtype": "Small Text",
+			"label": "Prompt — Email de Activação",
+			"description": "Template do prompt para email de activação. Use {tipo_experiencia_implantacao} como variável."
+		},
+		{
+			"fieldname": "ai_prompt_fallback",
+			"fieldtype": "Small Text",
+			"label": "Prompt — Fallback Genérico",
+			"description": "Prompt usado quando o segmento não é reconhecido ou os dados são insuficientes"
 		}
 	],
 	"issingle": 1,
 	"links": [],
-	"modified": "2026-05-01 00:00:00",
+	"modified": "2026-05-10 00:00:00",
 	"modified_by": "Administrator",
 	"module": "AI SaaS",
 	"name": "AI N8N Configuration",

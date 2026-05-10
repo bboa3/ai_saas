@@ -38,7 +38,7 @@
 			"fieldtype": "Select",
 			"in_list_view": 1,
 			"label": "Frequência",
-			"options": "\nConstante\nFrequente\nOcasional\nRara"
+			"options": "\nCritica\nConstante\nFrequente\nMensal\nTrimestral\nSazonal\nAnual\nOcasional\nRara"
 		}
 	],
 	"istable": 1,

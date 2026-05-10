@@ -44,4 +44,5 @@ fixtures = [
 	{"dt": "Web Form", "filters": [["name", "=", "lead-onboarding-form"]]},
 	{"dt": "Web Form", "filters": [["name", "=", "cloud-feedback"]]},
 	{"dt": "Segment Intelligence Map"},
+	{"dt": "AI N8N Configuration"},
 ]

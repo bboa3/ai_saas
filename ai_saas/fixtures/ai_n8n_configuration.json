@@ -1,0 +1,30 @@
+[
+ {
+  "ai_prompt_email_ativacao": "template_email_ativacao_{tipo_experiencia_implantacao}_v2",
+  "ai_prompt_fallback": "prompt_fallback_generica_v1",
+  "ai_prompt_proposta_comercial": "prompt_comercial_{segmento}_v1",
+  "default_workflow": "wf_triagem_manual_v1",
+  "docstatus": 0,
+  "doctype": "AI N8N Configuration",
+  "enable_webhook": 1,
+  "escalation_contact": "onboarding@mozeconomia.co.mz",
+  "missing_data_notification": "slack_onboarding_team",
+  "missing_data_workflow": "wf_validacao_dados_incompletos",
+  "modified": "2026-05-10 23:24:56.793331",
+  "n8n_api_key": "*********",
+  "n8n_base_url": "arlindojosboa@gmail.com",
+  "name": "AI N8N Configuration",
+  "normalization_map": "{\n  \"risco_fiscal_mz\": {\n    \"Baixo\": 0.2,\n    \"Medio\": 0.5,\n    \"Alto\": 0.8,\n    \"Critico\": 1.0\n  },\n  \"maturidade_digital\": {\n    \"Inicial\": 0.2,\n    \"Emergente\": 0.5,\n    \"Estruturado\": 0.8,\n    \"Otimizado\": 1.0\n  },\n  \"recorrencia_faturacao\": {\n    \"Unica\": 0.2,\n    \"Mensal\": 0.6,\n    \"Por_Marco\": 0.5,\n    \"Sazonal\": 0.4,\n    \"Continuo\": 0.8\n  }\n}",
+  "routing_rules": "[\n  {\n    \"priority\": 1,\n    \"condition\": {\n      \"field\": \"tipo_experiencia_implantacao\",\n      \"operator\": \"eq\",\n      \"value\": \"premium_personalizado\"\n    },\n    \"workflow_id\": \"wf_triagem_senior_e_pricing_premium\",\n    \"description\": \"Segmentos complexos exigem validação técnica e pricing dedicado\"\n  },\n  {\n    \"priority\": 2,\n    \"condition\": {\n      \"field\": \"tipo_experiencia_implantacao\",\n      \"operator\": \"eq\",\n      \"value\": \"implementacao_assistida\"\n    },\n    \"workflow_id\": \"wf_onboarding_assistido_com_hardware\",\n    \"description\": \"Setup com inventário, POS e formação de equipa\"\n  },\n  {\n    \"priority\": 3,\n    \"condition\": {\n      \"field\": \"tipo_experiencia_implantacao\",\n      \"operator\": \"eq\",\n      \"value\": \"rapido_padrao\"\n    },\n    \"workflow_id\": \"wf_onboarding_rapido_padrao\",\n    \"description\": \"Ativação automática, templates pré-configurados\"\n  },\n  {\n    \"priority\": 4,\n    \"condition\": {\n      \"field\": \"risco_fiscal_mz\",\n      \"operator\": \"eq\",\n      \"value\": \"Critico\"\n    },\n    \"workflow_id\": \"wf_alerta_compliance_urgente\",\n    \"description\": \"Escalada imediata para equipa de Contabilidade\"\n  },\n  {\n    \"priority\": 5,\n    \"condition\": {\n      \"field\": \"score_upsell\",\n      \"operator\": \"gte\",\n      \"value\": 8.0\n    },\n    \"workflow_id\": \"wf_upsell_premium\",\n    \"description\": \"Oportunidade de upsell de alta prioridade\"\n  },\n  {\n    \"priority\": 6,\n    \"condition\": {\n      \"field\": \"score_upsell\",\n      \"operator\": \"gte\",\n      \"value\": 6.0\n    },\n    \"workflow_id\": \"wf_upsell_standard\",\n    \"description\": \"Oportunidade de upsell padrão\"\n  },\n  {\n    \"priority\": 7,\n    \"condition\": {\n      \"field\": \"score_upsell\",\n      \"operator\": \"lt\",\n      \"value\": 4.0\n    },\n    \"workflow_id\": \"wf_triagem_manual_v1\",\n    \"description\": \"Score baixo ou dados insuficientes → intervenção humana\"\n  }\n]",
+  "scoring_formula": "score = (w1×n(sev) + w2×n(imp) + w3×n(gap) + w4×n(mat) + w5×n(fisc)) × 10",
+  "threshold_triagem_necessaria": 4.0,
+  "threshold_upsell_premium": 8.0,
+  "threshold_upsell_standard": 6.0,
+  "webhook_secret": "***************",
+  "weight_fit_fiscal_mz": 0.1,
+  "weight_gap_erpnext": 0.2,
+  "weight_impacto_financeiro": 0.25,
+  "weight_maturidade_cliente": 0.15,
+  "weight_severidade_dor": 0.3
+ }
+]

@@ -430,7 +430,7 @@ def ensure_child_doctypes():
 	"""
 	_ensure_child_doctype(
 		name="Tipo de Negocio",
-		autoname="field:tipo",
+		autoname="autoincrement",
 		title_field="tipo",
 		fields=[{"fieldname": "tipo", "fieldtype": "Data", "label": "Tipo", "reqd": 1, "in_list_view": 1, "unique": 1}],
 	)
@@ -457,7 +457,7 @@ def ensure_child_doctypes():
 			{"fieldname": "severidade_1_5", "fieldtype": "Int", "label": "Severidade (1–5)", "in_list_view": 1,
 				"description": "Escala de 1 a 5"},
 			{"fieldname": "frequencia", "fieldtype": "Select", "label": "Frequência", "in_list_view": 1,
-				"options": "\nConstante\nFrequente\nOcasional\nRara"},
+				"options": "\nCritica\nConstante\nFrequente\nMensal\nTrimestral\nSazonal\nAnual\nOcasional\nRara"},
 		],
 	)
 	_ensure_child_doctype(
