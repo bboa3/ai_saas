@@ -1,0 +1,203 @@
+{
+	"actions": [],
+	"creation": "2026-05-01 00:00:00",
+	"doctype": "DocType",
+	"editable_grid": 1,
+	"engine": "InnoDB",
+	"field_order": [
+		"connection_section",
+		"n8n_base_url",
+		"n8n_api_key",
+		"column_break_conn",
+		"webhook_secret",
+		"enable_webhook",
+		"escalation_contact",
+		"default_workflow",
+		"scoring_section",
+		"weight_severidade_dor",
+		"weight_impacto_financeiro",
+		"weight_gap_erpnext",
+		"column_break_scoring",
+		"weight_maturidade_cliente",
+		"weight_fit_fiscal_mz",
+		"thresholds_section",
+		"threshold_upsell_premium",
+		"threshold_upsell_standard",
+		"column_break_thresh",
+		"threshold_triagem_necessaria",
+		"routing_section",
+		"routing_rules",
+		"ai_section",
+		"ai_prompts"
+	],
+	"fields": [
+		{
+			"fieldname": "connection_section",
+			"fieldtype": "Section Break",
+			"label": "Ligação N8N"
+		},
+		{
+			"fieldname": "n8n_base_url",
+			"fieldtype": "Data",
+			"label": "URL Base N8N",
+			"description": "Ex: https://n8n.mozeconomia.co.mz",
+			"reqd": 0
+		},
+		{
+			"fieldname": "n8n_api_key",
+			"fieldtype": "Password",
+			"label": "API Key N8N"
+		},
+		{
+			"fieldname": "column_break_conn",
+			"fieldtype": "Column Break"
+		},
+		{
+			"fieldname": "webhook_secret",
+			"fieldtype": "Password",
+			"label": "Segredo HMAC do Webhook",
+			"description": "Usado para assinar payloads com HMAC-SHA256"
+		},
+		{
+			"fieldname": "enable_webhook",
+			"fieldtype": "Check",
+			"label": "Webhook Activo",
+			"default": "1",
+			"description": "Desligar para suspender todos os envios para N8N"
+		},
+		{
+			"fieldname": "escalation_contact",
+			"fieldtype": "Data",
+			"label": "Contacto de Escalada",
+			"options": "Email",
+			"description": "Email para notificações de erro de routing"
+		},
+		{
+			"fieldname": "default_workflow",
+			"fieldtype": "Data",
+			"label": "Workflow Padrão (ID)",
+			"description": "ID do workflow N8N usado como fallback"
+		},
+		{
+			"fieldname": "scoring_section",
+			"fieldtype": "Section Break",
+			"label": "Pesos do Motor de Scoring"
+		},
+		{
+			"fieldname": "weight_severidade_dor",
+			"fieldtype": "Float",
+			"label": "Peso — Severidade da Dor",
+			"default": "0.30",
+			"precision": "2"
+		},
+		{
+			"fieldname": "weight_impacto_financeiro",
+			"fieldtype": "Float",
+			"label": "Peso — Impacto Financeiro",
+			"default": "0.25",
+			"precision": "2"
+		},
+		{
+			"fieldname": "weight_gap_erpnext",
+			"fieldtype": "Float",
+			"label": "Peso — Gap ERPNext",
+			"default": "0.20",
+			"precision": "2"
+		},
+		{
+			"fieldname": "column_break_scoring",
+			"fieldtype": "Column Break"
+		},
+		{
+			"fieldname": "weight_maturidade_cliente",
+			"fieldtype": "Float",
+			"label": "Peso — Maturidade do Cliente",
+			"default": "0.15",
+			"precision": "2"
+		},
+		{
+			"fieldname": "weight_fit_fiscal_mz",
+			"fieldtype": "Float",
+			"label": "Peso — Fit Fiscal MZ",
+			"default": "0.10",
+			"precision": "2"
+		},
+		{
+			"fieldname": "thresholds_section",
+			"fieldtype": "Section Break",
+			"label": "Limiares de Decisão"
+		},
+		{
+			"fieldname": "threshold_upsell_premium",
+			"fieldtype": "Float",
+			"label": "Limiar Upsell Premium",
+			"default": "8.0",
+			"precision": "1"
+		},
+		{
+			"fieldname": "threshold_upsell_standard",
+			"fieldtype": "Float",
+			"label": "Limiar Upsell Standard",
+			"default": "6.0",
+			"precision": "1"
+		},
+		{
+			"fieldname": "column_break_thresh",
+			"fieldtype": "Column Break"
+		},
+		{
+			"fieldname": "threshold_triagem_necessaria",
+			"fieldtype": "Float",
+			"label": "Limiar Triagem Necessária",
+			"default": "4.0",
+			"precision": "1"
+		},
+		{
+			"fieldname": "routing_section",
+			"fieldtype": "Section Break",
+			"label": "Regras de Routing"
+		},
+		{
+			"fieldname": "routing_rules",
+			"fieldtype": "JSON",
+			"label": "Routing Rules",
+			"description": "Array JSON: [{priority, condition, workflow_id, description}]"
+		},
+		{
+			"fieldname": "ai_section",
+			"fieldtype": "Section Break",
+			"label": "Configuração de IA"
+		},
+		{
+			"fieldname": "ai_prompts",
+			"fieldtype": "JSON",
+			"label": "Prompts de IA",
+			"description": "Objecto JSON: {proposta_comercial, email_ativacao, fallback_proposal}"
+		}
+	],
+	"issingle": 1,
+	"links": [],
+	"modified": "2026-05-01 00:00:00",
+	"modified_by": "Administrator",
+	"module": "AI SaaS",
+	"name": "AI N8N Configuration",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "System Manager",
+			"share": 1,
+			"write": 1
+		}
+	],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": [],
+	"track_changes": 1
+}

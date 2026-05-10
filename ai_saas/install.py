@@ -11,6 +11,7 @@ def after_install():
 	_sync_quality_feedback_templates()
 	ensure_multipay_custom_fields()
 	ensure_multipay_modes_of_payment()
+	ensure_tipo_de_negocio()
 	frappe.db.commit()
 
 
@@ -24,6 +25,7 @@ def after_migrate():
 	_sync_quality_feedback_templates()
 	ensure_multipay_custom_fields()
 	ensure_multipay_modes_of_payment()
+	ensure_tipo_de_negocio()
 	frappe.db.commit()
 
 
@@ -416,3 +418,40 @@ def ensure_multipay_modes_of_payment():
 					title=f"AI SaaS: Could not create Mode of Payment '{mop}'",
 					message=frappe.get_traceback(),
 				)
+
+
+def ensure_tipo_de_negocio():
+	"""Create Tipo de Negocio as a custom child DocType (istable=1).
+
+	Custom DocTypes are exempt from bench migrate's orphan check, which was
+	repeatedly deleting the standard-DocType version on every migration.
+	"""
+	if frappe.db.exists("DocType", "Tipo de Negocio"):
+		return
+	try:
+		doc = frappe.get_doc({
+			"doctype": "DocType",
+			"name": "Tipo de Negocio",
+			"module": "AI SaaS",
+			"custom": 1,
+			"istable": 1,
+			"editable_grid": 1,
+			"autoname": "field:tipo",
+			"title_field": "tipo",
+			"fields": [
+				{
+					"fieldname": "tipo",
+					"fieldtype": "Data",
+					"label": "Tipo",
+					"reqd": 1,
+					"in_list_view": 1,
+					"unique": 1,
+				}
+			],
+		})
+		doc.insert(ignore_permissions=True)
+	except Exception:
+		frappe.log_error(
+			title="AI SaaS: ensure_tipo_de_negocio failed",
+			message=frappe.get_traceback(),
+		)

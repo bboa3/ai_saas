@@ -1,0 +1,32 @@
+{
+	"actions": [],
+	"autoname": "field:integracao",
+	"creation": "2026-05-01 00:00:00",
+	"doctype": "DocType",
+	"editable_grid": 1,
+	"engine": "InnoDB",
+	"field_order": [
+		"integracao"
+	],
+	"fields": [
+		{
+			"fieldname": "integracao",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Integração",
+			"reqd": 1
+		}
+	],
+	"istable": 1,
+	"links": [],
+	"modified": "2026-05-01 00:00:00",
+	"modified_by": "Administrator",
+	"module": "AI SaaS",
+	"name": "Integracao Recomendada",
+	"owner": "Administrator",
+	"permissions": [],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": [],
+	"title_field": "integracao"
+}
