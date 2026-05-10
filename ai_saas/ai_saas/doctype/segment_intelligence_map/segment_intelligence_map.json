@@ -202,8 +202,9 @@
 		},
 		{
 			"fieldname": "tags_diferenciadoras",
-			"fieldtype": "JSON",
-			"label": "Tags Diferenciadoras por Tipo"
+			"fieldtype": "Table",
+			"label": "Tags Diferenciadoras por Tipo",
+			"options": "Tag Diferenciadora"
 		},
 		{
 			"fieldname": "modulos_minimos",

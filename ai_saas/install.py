@@ -461,6 +461,16 @@ def ensure_child_doctypes():
 		],
 	)
 	_ensure_child_doctype(
+		name="Tag Diferenciadora",
+		autoname="autoincrement",
+		title_field="tipo",
+		fields=[
+			{"fieldname": "tipo", "fieldtype": "Data", "label": "Tipo", "reqd": 1, "in_list_view": 1},
+			{"fieldname": "tags", "fieldtype": "Small Text", "label": "Tags", "in_list_view": 1,
+				"description": "Uma tag por linha"},
+		],
+	)
+	_ensure_child_doctype(
 		name="Oportunidade Upsell",
 		autoname="autoincrement",
 		title_field="titulo",
