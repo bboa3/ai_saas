@@ -1,0 +1,56 @@
+{
+	"actions": [],
+	"autoname": "autoincrement",
+	"creation": "2026-05-10 00:00:00",
+	"doctype": "DocType",
+	"editable_grid": 1,
+	"engine": "InnoDB",
+	"field_order": [
+		"tipo_dore",
+		"descricao",
+		"severidade_1_5",
+		"frequencia"
+	],
+	"fields": [
+		{
+			"fieldname": "tipo_dore",
+			"fieldtype": "Select",
+			"in_list_view": 1,
+			"label": "Tipo de Dor",
+			"options": "\nOperacional\nFinanceira\nFiscal\nComercial",
+			"reqd": 1
+		},
+		{
+			"fieldname": "descricao",
+			"fieldtype": "Text",
+			"in_list_view": 1,
+			"label": "Descrição"
+		},
+		{
+			"fieldname": "severidade_1_5",
+			"fieldtype": "Int",
+			"in_list_view": 1,
+			"label": "Severidade (1–5)",
+			"description": "Escala de 1 a 5"
+		},
+		{
+			"fieldname": "frequencia",
+			"fieldtype": "Select",
+			"in_list_view": 1,
+			"label": "Frequência",
+			"options": "\nConstante\nFrequente\nOcasional\nRara"
+		}
+	],
+	"istable": 1,
+	"links": [],
+	"modified": "2026-05-10 00:00:00",
+	"modified_by": "Administrator",
+	"module": "AI SaaS",
+	"name": "Dore Estruturada",
+	"owner": "Administrator",
+	"permissions": [],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": [],
+	"title_field": "tipo_dore"
+}

@@ -242,9 +242,9 @@
 		},
 		{
 			"fieldname": "dores_estruturadas",
-			"fieldtype": "JSON",
+			"fieldtype": "Table",
 			"label": "Dores Estruturadas",
-			"description": "Objecto com chaves: operacionais, financeiras, fiscais, comerciais"
+			"options": "Dore Estruturada"
 		},
 		{
 			"fieldname": "oportunidades_section",
@@ -253,13 +253,15 @@
 		},
 		{
 			"fieldname": "oportunidades_upsell",
-			"fieldtype": "JSON",
-			"label": "Oportunidades de Upsell"
+			"fieldtype": "Table",
+			"label": "Oportunidades de Upsell",
+			"options": "Oportunidade Upsell"
 		},
 		{
 			"fieldname": "gatilhos_acao",
-			"fieldtype": "JSON",
-			"label": "Gatilhos de Ação"
+			"fieldtype": "Table",
+			"label": "Gatilhos de Ação",
+			"options": "Gatilho Acao"
 		},
 		{
 			"fieldname": "qualificacao_section",

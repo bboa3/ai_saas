@@ -11,7 +11,7 @@ def after_install():
 	_sync_quality_feedback_templates()
 	ensure_multipay_custom_fields()
 	ensure_multipay_modes_of_payment()
-	ensure_tipo_de_negocio()
+	ensure_child_doctypes()
 	frappe.db.commit()
 
 
@@ -25,7 +25,7 @@ def after_migrate():
 	_sync_quality_feedback_templates()
 	ensure_multipay_custom_fields()
 	ensure_multipay_modes_of_payment()
-	ensure_tipo_de_negocio()
+	ensure_child_doctypes()
 	frappe.db.commit()
 
 
@@ -420,38 +420,101 @@ def ensure_multipay_modes_of_payment():
 				)
 
 
-def ensure_tipo_de_negocio():
-	"""Create Tipo de Negocio as a custom child DocType (istable=1).
+def ensure_child_doctypes():
+	"""Ensure all AI SaaS child DocTypes exist as custom=1 so the orphan check never deletes them.
 
-	Custom DocTypes are exempt from bench migrate's orphan check, which was
-	repeatedly deleting the standard-DocType version on every migration.
+	bench migrate's orphan check calls get_controller() for every non-custom DocType and deletes
+	any that raise ImportError. These child tables consistently trigger that in the migrate context
+	even though their files are present. Setting custom=1 exempts them from the check entirely.
+	The JSON files are kept for schema documentation; this function is the authoritative creator.
 	"""
-	if frappe.db.exists("DocType", "Tipo de Negocio"):
+	_ensure_child_doctype(
+		name="Tipo de Negocio",
+		autoname="field:tipo",
+		title_field="tipo",
+		fields=[{"fieldname": "tipo", "fieldtype": "Data", "label": "Tipo", "reqd": 1, "in_list_view": 1, "unique": 1}],
+	)
+	_ensure_child_doctype(
+		name="Modelo de Negocio",
+		autoname="autoincrement",
+		title_field="modelo",
+		fields=[{"fieldname": "modelo", "fieldtype": "Data", "label": "Modelo", "reqd": 1, "in_list_view": 1}],
+	)
+	_ensure_child_doctype(
+		name="Modelo de Receita",
+		autoname="autoincrement",
+		title_field="modelo",
+		fields=[{"fieldname": "modelo", "fieldtype": "Data", "label": "Modelo", "reqd": 1, "in_list_view": 1}],
+	)
+	_ensure_child_doctype(
+		name="Dore Estruturada",
+		autoname="autoincrement",
+		title_field="tipo_dore",
+		fields=[
+			{"fieldname": "tipo_dore", "fieldtype": "Select", "label": "Tipo de Dor", "reqd": 1, "in_list_view": 1,
+				"options": "\nOperacional\nFinanceira\nFiscal\nComercial"},
+			{"fieldname": "descricao", "fieldtype": "Text", "label": "Descrição", "in_list_view": 1},
+			{"fieldname": "severidade_1_5", "fieldtype": "Int", "label": "Severidade (1–5)", "in_list_view": 1,
+				"description": "Escala de 1 a 5"},
+			{"fieldname": "frequencia", "fieldtype": "Select", "label": "Frequência", "in_list_view": 1,
+				"options": "\nConstante\nFrequente\nOcasional\nRara"},
+		],
+	)
+	_ensure_child_doctype(
+		name="Oportunidade Upsell",
+		autoname="autoincrement",
+		title_field="titulo",
+		fields=[
+			{"fieldname": "id_upsell", "fieldtype": "Data", "label": "ID Upsell", "reqd": 1, "in_list_view": 1},
+			{"fieldname": "categoria", "fieldtype": "Select", "label": "Categoria", "in_list_view": 1,
+				"options": "\nAutomacao\nConsultoria\nModulo_Adicional\nServico_Contabilidade"},
+			{"fieldname": "titulo", "fieldtype": "Data", "label": "Título", "in_list_view": 1},
+			{"fieldname": "proposta_comercial_resumida", "fieldtype": "Text", "label": "Proposta Comercial Resumida"},
+			{"fieldname": "roi_estimado_meses", "fieldtype": "Int", "label": "ROI Estimado (meses)"},
+			{"fieldname": "preco_min_mzn", "fieldtype": "Currency", "label": "Preço Mín (MZN)"},
+			{"fieldname": "preco_max_mzn", "fieldtype": "Currency", "label": "Preço Máx (MZN)"},
+			{"fieldname": "confianca_match_1_5", "fieldtype": "Int", "label": "Confiança de Match (1–5)",
+				"description": "Escala de 1 a 5"},
+			{"fieldname": "pre_requisitos_sistema", "fieldtype": "Small Text", "label": "Pré-requisitos do Sistema"},
+		],
+	)
+	_ensure_child_doctype(
+		name="Gatilho Acao",
+		autoname="autoincrement",
+		title_field="id_gatilho",
+		fields=[
+			{"fieldname": "id_gatilho", "fieldtype": "Data", "label": "ID Gatilho", "reqd": 1, "in_list_view": 1},
+			{"fieldname": "tipo", "fieldtype": "Select", "label": "Tipo", "in_list_view": 1,
+				"options": "\ncomportamental\nfinanceiro\noperacional\ntemporal"},
+			{"fieldname": "condicao_maquina", "fieldtype": "Text", "label": "Condição (Máquina)"},
+			{"fieldname": "fonte_dados", "fieldtype": "Data", "label": "Fonte de Dados"},
+			{"fieldname": "n8n_workflow_id", "fieldtype": "Data", "label": "n8n Workflow ID"},
+			{"fieldname": "acao_comercial", "fieldtype": "Select", "label": "Ação Comercial", "in_list_view": 1,
+				"options": "\nalerta\ncall\nemail\ntask_crm"},
+			{"fieldname": "prioridade_execucao", "fieldtype": "Select", "label": "Prioridade de Execução", "in_list_view": 1,
+				"options": "\nImediata\n24h\n7d"},
+		],
+	)
+
+
+def _ensure_child_doctype(name, autoname, title_field, fields):
+	"""Create a child DocType as custom=1 if it does not already exist."""
+	if frappe.db.exists("DocType", name):
 		return
 	try:
-		doc = frappe.get_doc({
+		frappe.get_doc({
 			"doctype": "DocType",
-			"name": "Tipo de Negocio",
+			"name": name,
 			"module": "AI SaaS",
 			"custom": 1,
 			"istable": 1,
 			"editable_grid": 1,
-			"autoname": "field:tipo",
-			"title_field": "tipo",
-			"fields": [
-				{
-					"fieldname": "tipo",
-					"fieldtype": "Data",
-					"label": "Tipo",
-					"reqd": 1,
-					"in_list_view": 1,
-					"unique": 1,
-				}
-			],
-		})
-		doc.insert(ignore_permissions=True)
+			"autoname": autoname,
+			"title_field": title_field,
+			"fields": fields,
+		}).insert(ignore_permissions=True)
 	except Exception:
 		frappe.log_error(
-			title="AI SaaS: ensure_tipo_de_negocio failed",
+			title=f"AI SaaS: _ensure_child_doctype '{name}' failed",
 			message=frappe.get_traceback(),
 		)

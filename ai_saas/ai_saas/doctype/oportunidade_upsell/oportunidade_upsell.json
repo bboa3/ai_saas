@@ -1,0 +1,84 @@
+{
+	"actions": [],
+	"autoname": "autoincrement",
+	"creation": "2026-05-10 00:00:00",
+	"doctype": "DocType",
+	"editable_grid": 1,
+	"engine": "InnoDB",
+	"field_order": [
+		"id_upsell",
+		"categoria",
+		"titulo",
+		"proposta_comercial_resumida",
+		"roi_estimado_meses",
+		"preco_min_mzn",
+		"preco_max_mzn",
+		"confianca_match_1_5",
+		"pre_requisitos_sistema"
+	],
+	"fields": [
+		{
+			"fieldname": "id_upsell",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "ID Upsell",
+			"reqd": 1
+		},
+		{
+			"fieldname": "categoria",
+			"fieldtype": "Select",
+			"in_list_view": 1,
+			"label": "Categoria",
+			"options": "\nAutomacao\nConsultoria\nModulo_Adicional\nServico_Contabilidade"
+		},
+		{
+			"fieldname": "titulo",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Título"
+		},
+		{
+			"fieldname": "proposta_comercial_resumida",
+			"fieldtype": "Text",
+			"label": "Proposta Comercial Resumida"
+		},
+		{
+			"fieldname": "roi_estimado_meses",
+			"fieldtype": "Int",
+			"label": "ROI Estimado (meses)"
+		},
+		{
+			"fieldname": "preco_min_mzn",
+			"fieldtype": "Currency",
+			"label": "Preço Mín (MZN)"
+		},
+		{
+			"fieldname": "preco_max_mzn",
+			"fieldtype": "Currency",
+			"label": "Preço Máx (MZN)"
+		},
+		{
+			"fieldname": "confianca_match_1_5",
+			"fieldtype": "Int",
+			"label": "Confiança de Match (1–5)",
+			"description": "Escala de 1 a 5"
+		},
+		{
+			"fieldname": "pre_requisitos_sistema",
+			"fieldtype": "Small Text",
+			"label": "Pré-requisitos do Sistema"
+		}
+	],
+	"istable": 1,
+	"links": [],
+	"modified": "2026-05-10 00:00:00",
+	"modified_by": "Administrator",
+	"module": "AI SaaS",
+	"name": "Oportunidade Upsell",
+	"owner": "Administrator",
+	"permissions": [],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": [],
+	"title_field": "titulo"
+}
