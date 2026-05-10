@@ -8,8 +8,16 @@ import subprocess
 import frappe
 from frappe.utils.password import get_decrypted_password
 
-BENCH_PATH = "/srv/frappe/frappe-bench"
-BENCH_CMD = "/usr/local/bin/bench"
+_DEFAULT_BENCH_PATH = "/srv/frappe/frappe-bench"
+_DEFAULT_BENCH_CMD = "/usr/local/bin/bench"
+
+
+def _get_bench_path() -> str:
+	return frappe.conf.get("bench_path") or _DEFAULT_BENCH_PATH
+
+
+def _get_bench_cmd() -> str:
+	return frappe.conf.get("bench_cmd") or _DEFAULT_BENCH_CMD
 DOMAIN_SUFFIX = ".erp.mozeconomia.co.mz"
 MAX_ATTEMPTS = 3
 PROVISION_TIMEOUT = 1200  # 20 min — bench new-site + app installs
@@ -157,7 +165,7 @@ def _step_create_site(prov) -> None:
 	prov.save(ignore_permissions=True)
 	frappe.db.commit()
 
-	site_dir = os.path.join(BENCH_PATH, "sites", prov.site_name)
+	site_dir = os.path.join(_get_bench_path(), "sites", prov.site_name)
 	if os.path.exists(site_dir):
 		_append_log(prov, "Diretório do site já existe — a saltar bench new-site (tentativa anterior).")
 		return
@@ -175,7 +183,7 @@ def _step_create_site(prov) -> None:
 
 	_run_cmd(
 		[
-			BENCH_CMD, "new-site", prov.site_name,
+			_get_bench_cmd(), "new-site", prov.site_name,
 			"--db-root-password", db_root_password,
 			"--admin-password", site_admin_password,
 			*install_app_args,
@@ -187,7 +195,7 @@ def _step_create_site(prov) -> None:
 		timeout=PROVISION_TIMEOUT,
 	)
 	_run_cmd(
-		[BENCH_CMD, "--site", prov.site_name, "set-config", "host_name", f"https://{prov.site_name}"],
+		[_get_bench_cmd(), "--site", prov.site_name, "set-config", "host_name", f"https://{prov.site_name}"],
 		step="set-hostname",
 		prov=prov,
 		timeout=15,
@@ -222,7 +230,7 @@ def _step_run_setup_wizard(prov) -> None:
 	# wizard data under the key "args" so bench calls setup_complete(args={...}).
 	_run_cmd(
 		[
-			BENCH_CMD, "--site", prov.site_name,
+			_get_bench_cmd(), "--site", prov.site_name,
 			"execute",
 			"frappe.desk.page.setup_wizard.setup_wizard.setup_complete",
 			"--kwargs", json.dumps({"args": wizard_kwargs}),
@@ -245,7 +253,7 @@ def _step_apply_system_settings(prov) -> None:
 	_append_log(prov, "A garantir registo de idioma pt-MZ no novo site")
 	_run_cmd(
 		[
-			BENCH_CMD, "--site", prov.site_name,
+			_get_bench_cmd(), "--site", prov.site_name,
 			"execute",
 			"erpnext_mz.setup.language.ensure_language_pt_mz",
 		],
@@ -257,7 +265,7 @@ def _step_apply_system_settings(prov) -> None:
 	_append_log(prov, "A aplicar definições de sistema (idioma pt-MZ, MZN, fuso horário)")
 	_run_cmd(
 		[
-			BENCH_CMD, "--site", prov.site_name,
+			_get_bench_cmd(), "--site", prov.site_name,
 			"execute",
 			"erpnext_mz.setup.language.apply_system_settings",
 			"--kwargs", '{"override": 1}',
@@ -281,7 +289,7 @@ def _step_seed_company_profile(prov) -> None:
 
 	_run_cmd(
 		[
-			BENCH_CMD, "--site", prov.site_name,
+			_get_bench_cmd(), "--site", prov.site_name,
 			"execute",
 			"erpnext_mz.setup.onboarding.seed_company_profile",
 			"--kwargs", json.dumps({"data": data}),
@@ -415,7 +423,7 @@ def _step_setup_smtp(prov) -> None:
 	try:
 		_run_cmd(
 			[
-				BENCH_CMD, "--site", prov.site_name,
+				_get_bench_cmd(), "--site", prov.site_name,
 				"execute",
 				"erpnext_mz.setup.onboarding.ensure_smtp_infrastructure_manually",
 			],
@@ -468,7 +476,7 @@ def _generate_password_reset_link(prov) -> str:
 	)
 	raw = _run_cmd_capture(
 		[
-			BENCH_CMD, "--site", prov.site_name, "execute", method,
+			_get_bench_cmd(), "--site", prov.site_name, "execute", method,
 			"--kwargs", json.dumps({"email": prov.contact_email}),
 		],
 		step="reset-key",
@@ -497,7 +505,7 @@ def _run_cmd(cmd: list, step: str, prov, timeout: int) -> None:
 			cmd,
 			capture_output=True,
 			text=True,
-			cwd=BENCH_PATH,
+			cwd=_get_bench_path(),
 			env={**os.environ},
 			timeout=timeout,
 		)
@@ -523,7 +531,7 @@ def _run_cmd_capture(cmd: list, step: str, prov, timeout: int) -> str:
 			cmd,
 			capture_output=True,
 			text=True,
-			cwd=BENCH_PATH,
+			cwd=_get_bench_path(),
 			env={**os.environ},
 			timeout=timeout,
 		)
