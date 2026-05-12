@@ -2,13 +2,12 @@ import frappe
 
 
 def before_migrate():
-	"""Ensure orphan-vulnerable child DocTypes exist before fixture sync runs.
+	"""Ensure custom=1 child DocTypes exist before fixture sync runs.
 
-	bench migrate order: sync_all → remove_orphan_doctypes → sync_fixtures → after_migrate.
-	Tipo de Negocio, Modelo de Negocio, and Modelo de Receita have no importable controller
-	so the orphan check deletes them before fixture sync. Recreating them here (as custom=1)
-	means their meta and DB tables are present when sync_fixtures inserts Segment Intelligence
-	Map records that reference them.
+	bench migrate order: before_migrate → sync_all → sync_fixtures → after_migrate.
+	Tipo de Negocio, Modelo de Negocio, and Modelo de Receita are managed exclusively
+	via ensure_child_doctypes() (no JSON files in the app). They must exist before
+	sync_fixtures() inserts Segment Intelligence Map records that reference them.
 	"""
 	ensure_child_doctypes()
 	frappe.db.commit()
