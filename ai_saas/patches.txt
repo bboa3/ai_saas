@@ -6,3 +6,4 @@ ai_saas.patches.v1.drop_multipay_payment_request_doctype
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 ai_saas.patches.v1.fix_autoincrement_child_tables
+ai_saas.patches.v1.fix_tipo_de_negocio_autoincrement

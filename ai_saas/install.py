@@ -520,8 +520,11 @@ def ensure_child_doctypes():
 
 
 def _ensure_child_doctype(name, autoname, title_field, fields):
-	"""Create a child DocType as custom=1 if it does not already exist."""
+	"""Create or repair a child DocType as custom=1."""
 	if frappe.db.exists("DocType", name):
+		# Repair stale autoname — e.g. previously created with field:X, now needs autoincrement
+		if frappe.db.get_value("DocType", name, "autoname") != autoname:
+			frappe.db.set_value("DocType", name, "autoname", autoname)
 		return
 	try:
 		frappe.get_doc({
