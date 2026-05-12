@@ -9,6 +9,7 @@ app_version = "1.0.0"
 required_apps = ["erpnext", "erpnext_mz"]
 
 after_install = "ai_saas.install.after_install"
+before_migrate = "ai_saas.install.before_migrate"
 after_migrate = "ai_saas.install.after_migrate"
 
 doc_events = {
