@@ -8,6 +8,7 @@
 	"field_order": [
 		"lead",
 		"company_name",
+		"industry",
 		"tax_id",
 		"company_email",
 		"company_phone",
@@ -31,6 +32,13 @@
 			"label": "Nome da Empresa",
 			"reqd": 1,
 			"in_list_view": 1
+		},
+		{
+			"fieldname": "industry",
+			"fieldtype": "Link",
+			"label": "Setor de Atividade",
+			"options": "Segment Intelligence Map",
+			"reqd": 0
 		},
 		{
 			"fieldname": "tax_id",

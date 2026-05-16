@@ -42,8 +42,7 @@ fixtures = [
 	{"dt": "Custom Field", "filters": [["dt", "in", ["Contract"]], ["module", "=", "AI SaaS"]]},
 	{"dt": "Notification", "filters": [["name", "like", "AI SaaS%"]]},
 	{"dt": "Client Script", "filters": [["name", "like", "AI SaaS%"]]},
-	{"dt": "Web Form", "filters": [["name", "=", "lead-onboarding-form"]]},
-	{"dt": "Web Form", "filters": [["name", "=", "cloud-feedback"]]},
+	{"dt": "Web Form", "filters": [["name", "in", ["lead-onboarding-form", "cloud-feedback"]]]},
 	{"dt": "Segment Intelligence Map"},
 	{"dt": "AI N8N Configuration"},
 ]
