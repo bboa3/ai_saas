@@ -61,6 +61,7 @@ def provision_tenant(contract_name: str) -> None:
 		or contract.party_name
 	)
 	contact_password = _generate_admin_password()
+	contact_email = _resolve_contact_email(contract)
 
 	# Read app list from the Contract; fall back to DEFAULT_APPS if none configured
 	apps = [row.app_name for row in (contract.get("mz_apps_to_install") or []) if row.app_name]
@@ -73,12 +74,13 @@ def provision_tenant(contract_name: str) -> None:
 		"tenant_slug": slug,
 		"site_name": slug + DOMAIN_SUFFIX,
 		"customer_name": customer_name,
-		"contact_email": contract.get("contact_email") or "",
+		"contact_email": contact_email,
 		"contact_password": contact_password,
 		"status": "Queued",
 		"attempts": 0,
 		"mz_provisioning_apps": [{"app_name": a} for a in apps],
 		"log": f"[{frappe.utils.now()}] Provisionamento enfileirado para contrato {contract_name}\n"
+			   f"[{frappe.utils.now()}] Email de contacto: {contact_email or 'NÃO ENCONTRADO'}\n"
 			   f"[{frappe.utils.now()}] Aplicações: {', '.join(apps)}\n",
 	})
 	prov.insert(ignore_permissions=True)
@@ -722,6 +724,38 @@ def _send_failure_alert(prov, error_message: str) -> None:
 # ---------------------------------------------------------------------------
 # Validation & utilities
 # ---------------------------------------------------------------------------
+
+def _resolve_contact_email(contract) -> str:
+	"""Return the contact email for a contract from the Customer record.
+
+	Uses the same lookup order as _collect_customer_profile:
+	1. Customer.email_id (direct field, populated from primary contact)
+	2. Primary Contact linked to the Customer (Dynamic Link)
+	The explicit contract.contact_email field overrides both when set.
+	"""
+	# Explicit override on the contract takes highest priority
+	explicit = (contract.get("contact_email") or "").strip()
+	if explicit:
+		return explicit
+
+	customer_name = contract.party_name
+
+	# Customer.email_id — same first source as _collect_customer_profile
+	email = (frappe.db.get_value("Customer", customer_name, "email_id") or "").strip()
+	if email:
+		return email
+
+	# Primary Contact linked to the Customer — same fallback as _collect_customer_profile
+	contact_name = frappe.db.get_value(
+		"Dynamic Link",
+		{"link_doctype": "Customer", "link_name": customer_name, "parenttype": "Contact"},
+		"parent",
+	)
+	if contact_name:
+		email = (frappe.db.get_value("Contact", contact_name, "email_id") or "").strip()
+
+	return email
+
 
 def _validate_slug(slug: str) -> None:
 	if not SLUG_RE.match(slug):
