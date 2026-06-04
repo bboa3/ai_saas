@@ -25,6 +25,9 @@ doc_events = {
 	"MZ Customer Feedback": {
 		"after_insert": "ai_saas.saas.feedback.on_feedback_submit",
 	},
+	"Payment Entry": {
+		"before_submit": "ai_saas.payment_entry.set_contact_email",
+	},
 }
 
 
