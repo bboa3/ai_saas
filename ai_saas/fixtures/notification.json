@@ -16,7 +16,7 @@
     "message": "{% set party_name = doc.party_name or \"cliente\" %}\n{% set company_doc = frappe.get_doc(\"Company\", doc.company) if doc.company else None %}\n\n<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background:#F5F6F7;padding:20px 0;font-family:Arial,sans-serif;color:#1e2a38;line-height:1.5;\">\n  <tr><td align=\"center\">\n    <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"600\" style=\"background:#FFFFFF;border-radius:8px;overflow:hidden;mso-table-lspace:0;mso-table-rspace:0;border-collapse:collapse;\">\n      <tr><td style=\"padding:30px;font-size:14px;color:#1e2a38;\">\n\n        <p>Prezados (<strong>{{ party_name }}</strong>),</p>\n        <p>Sauda&ccedil;&otilde;es cordiais.</p>\n\n        <p>Agradecemos imensamente pelo pagamento{% if doc.references %}{% if doc.references | length == 1 %} referente &agrave; fatura <strong>{{ doc.references[0].reference_name }}</strong>{% else %} referente &agrave;s faturas <strong>{% for ref in doc.references %}{{ ref.reference_name }}{% if not loop.last %}, {% endif %}{% endfor %}</strong>{% endif %}{% endif %}.</p>\n\n        <p>Em anexo, segue o recibo de pagamento comprovativo da transa&ccedil;&atilde;o:</p>\n\n        <p>\n          <strong>Recibo:</strong> {{ doc.name }}<br>\n          <strong>Valor:</strong> {{ frappe.format_value(doc.paid_amount, {\"fieldtype\": \"Currency\", \"currency\": doc.paid_from_account_currency}) }}<br>\n          <strong>Data:</strong> {{ frappe.format_date(doc.posting_date) }}{% if doc.mode_of_payment %}<br>\n          <strong>Forma de Pagamento:</strong> {{ doc.mode_of_payment }}{% endif %}{% if doc.reference_no %}<br>\n          <strong>Refer&ecirc;ncia:</strong> {{ doc.reference_no }}{% endif %}\n        </p>\n\n        <p>Estamos sempre dispon&iacute;veis via <strong>WhatsApp (+258 87 4444 645)</strong> ou <a href=\"mailto:cloud@mozeconomia.co.mz\" style=\"color:#008000;\">email</a> para apoiar em cada etapa.</p>\n\n        <p>Muito obrigado pela confian&ccedil;a.</p>\n\n        <p>Com boas energias,<br><strong>Equipa MozEconomia Cloud</strong></p>\n\n      </td></tr>\n      <tr><td style=\"padding:0 30px 30px 30px;\">\n        <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"font-family:Arial,sans-serif;font-size:14px;color:#1e2a38;border-collapse:collapse;\">\n          <tr><td style=\"padding:0 0 8px 0;\">\n            {% if company_doc and company_doc.company_logo %}<img src=\"{{ frappe.utils.get_url() }}{{ company_doc.company_logo }}\" alt=\"{{ doc.company }}\" width=\"240\" style=\"display:block;border:0;\">\n            {% else %}<img src=\"{{ frappe.utils.get_url() }}/files/logo.png\" alt=\"MozEconomia Cloud\" width=\"240\" style=\"display:block;border:0;\">{% endif %}\n          </td></tr>\n          <tr><td style=\"padding:4px 0;\">\n            <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"border-collapse:collapse;\">\n              <tr><td valign=\"top\" style=\"font-weight:bold;width:80px;padding:2px 0;\">Telefone:</td><td style=\"padding:2px 0;\"><a href=\"tel:+258874444645\" style=\"color:#1e2a38;text-decoration:none;\">+258 87 4444 645</a></td></tr>\n              <tr><td valign=\"top\" style=\"font-weight:bold;padding:2px 0;\">Email:</td><td style=\"padding:2px 0;\"><a href=\"mailto:cloud@mozeconomia.co.mz\" style=\"color:#1e2a38;text-decoration:none;\">cloud@mozeconomia.co.mz</a></td></tr>\n              <tr><td valign=\"top\" style=\"font-weight:bold;padding:2px 0;\">Website:</td><td style=\"padding:2px 0;\"><a href=\"https://mozeconomia.co.mz\" style=\"color:#1e2a38;text-decoration:none;\">mozeconomia.co.mz</a></td></tr>\n            </table>\n          </td></tr>\n          <tr><td style=\"padding:8px 0 0 0;font-size:12px;color:#1e2a38;\">MOZ ECONOMIA S.A. &bull; Solu&ccedil;&otilde;es de contabilidade e gest&atilde;o empresarial.</td></tr>\n        </table>\n      </td></tr>\n    </table>\n  </td></tr>\n</table>",
     "message_type": "HTML",
     "method": null,
-    "modified": "2026-06-04 16:00:00.000000",
+    "modified": "2026-06-04 16:00:00",
     "module": null,
     "name": "AI SaaS - Recibo de Pagamento",
     "print_format": "Entrada de Pagamento (MZ)",
@@ -59,7 +59,7 @@
     "message": "<p>Prezado {{ doc.customer_name }},</p>\n<p>Agradecemos pela confiança contínua na MozEconomia Cloud.</p>\n<p>Segue em anexo a fatura referente ao período do seu serviço.</p>\n<table style=\"border-collapse:collapse;margin:12px 0\">\n  <tr><td style=\"padding:4px 16px 4px 0\"><strong>Número da Fatura:</strong></td><td>{{ doc.name }}</td></tr>\n  <tr><td style=\"padding:4px 16px 4px 0\"><strong>Data de Emissão:</strong></td><td>{{ frappe.format_date(doc.posting_date) }}</td></tr>\n  <tr><td style=\"padding:4px 16px 4px 0\"><strong>Vencimento:</strong></td><td>{{ frappe.format_date(doc.due_date) }}</td></tr>\n  <tr><td style=\"padding:4px 16px 4px 0\"><strong>Valor Total:</strong></td><td><strong>{{ frappe.format_value(doc.grand_total, {\"fieldtype\": \"Currency\", \"currency\": doc.currency}) }} (IVA incluído)</strong></td></tr>\n</table>\n<p>O pagamento garante a continuidade do acesso ao software, suporte técnico e actualizações automáticas.</p>\n<p><strong>Como Pagar:</strong></p>\n<p><em>Transferência Bancária</em></p>\n<ul>\n  <li>Banco: ABSA Moçambique</li>\n  <li>Conta: 0015102004707 | NIB: 000200151510200470737</li>\n  <li>Referência: <strong>{{ doc.name }}</strong></li>\n</ul>\n<p><em>E-Mola</em></p>\n<ul>\n  <li>Número: +258 87 4444 645</li>\n  <li>Referência: <strong>{{ doc.name }}</strong></li>\n</ul>\n<p>Após o pagamento, por favor envie o comprovativo por <strong>WhatsApp (+258 87 4444 645)</strong> ou escreva-nos para <a href=\"mailto:cloud@mozeconomia.co.mz\" style=\"color:#008000;\">cloud@mozeconomia.co.mz</a> — confirmaremos de imediato.</p>\n<p>Estamos à disposição para qualquer esclarecimento.</p>\n<p>Com boas energias,<br><strong>Equipa MozEconomia Cloud</strong></p>",
     "message_type": "HTML",
     "method": null,
-    "modified": "2026-04-08 19:28:15.301446",
+    "modified": "2026-08-09 09:36:03.646584",
     "module": null,
     "name": "AI SaaS - Fatura Emitida",
     "print_format": "Fatura (MZ)",
@@ -67,13 +67,13 @@
     "recipients": [
       {
         "bcc": null,
-        "cc": null,
+        "cc": "{{ frappe.get_all('Contact', filters=[['Dynamic Link','link_doctype','=','Customer'],['Dynamic Link','link_name','=',doc.customer],['Contact','is_billing_contact','=',1]], pluck='email_id', limit_page_length=0)|select|reject('equalto',doc.contact_email)|unique|join(',') }}",
         "condition": null,
         "parent": "AI SaaS - Fatura Emitida",
         "parentfield": "recipients",
         "parenttype": "Notification",
         "receiver_by_document_field": "contact_email",
-        "receiver_by_role": "All"
+        "receiver_by_role": null
       }
     ],
     "send_system_notification": 0,
@@ -102,7 +102,7 @@
     "message": "<p>Prezado {{ doc.customer_name }},</p>\n<p>Esperamos que esteja bem.</p>\n<p>Gostaríamos de recordar que a fatura <strong>{{ doc.name }}</strong>, emitida a {{ frappe.format_date(doc.posting_date) }}, vence a <strong>{{ frappe.format_date(doc.due_date) }}</strong> — faltam 6 dias.</p>\n<table style=\"border-collapse:collapse;margin:12px 0\">\n  <tr><td style=\"padding:4px 16px 4px 0\"><strong>Valor a Pagar:</strong></td><td>{{ frappe.format_value(doc.outstanding_amount, {\"fieldtype\": \"Currency\", \"currency\": doc.currency}) }}</td></tr>\n  <tr><td style=\"padding:4px 16px 4px 0\"><strong>Data Limite:</strong></td><td>{{ frappe.format_date(doc.due_date) }}</td></tr>\n</table>\n<p>A fatura encontra-se em anexo para sua referência.</p>\n<p><em>Transferência Bancária</em> — ABSA Moçambique | NIB: 000200151510200470737 | Referência: <strong>{{ doc.name }}</strong><br>\n<em>E-Mola</em> — +258 87 4444 645 | Referência: <strong>{{ doc.name }}</strong></p>\n<p>Caso já tenha efectuado o pagamento, por favor desconsidere este aviso. Se necessitar de qualquer esclarecimento, estamos à inteira disposição.</p>\n<p>Com boas energias,<br><strong>Equipa MozEconomia Cloud</strong></p>",
     "message_type": "HTML",
     "method": null,
-    "modified": "2026-04-08 19:28:15.279715",
+    "modified": "2026-08-09 09:35:50.111859",
     "module": null,
     "name": "AI SaaS - Lembrete 1",
     "print_format": "Fatura (MZ)",
@@ -110,13 +110,13 @@
     "recipients": [
       {
         "bcc": null,
-        "cc": null,
+        "cc": "{{ frappe.get_all('Contact', filters=[['Dynamic Link','link_doctype','=','Customer'],['Dynamic Link','link_name','=',doc.customer],['Contact','is_billing_contact','=',1]], pluck='email_id', limit_page_length=0)|select|reject('equalto',doc.contact_email)|unique|join(',') }}",
         "condition": null,
         "parent": "AI SaaS - Lembrete 1",
         "parentfield": "recipients",
         "parenttype": "Notification",
         "receiver_by_document_field": "contact_email",
-        "receiver_by_role": "All"
+        "receiver_by_role": ""
       }
     ],
     "send_system_notification": 0,
@@ -145,7 +145,7 @@
     "message": "<p>Prezado {{ doc.customer_name }},</p>\n<p>A fatura <strong>{{ doc.name }}</strong> vence em <strong>3 dias</strong>, a {{ frappe.format_date(doc.due_date) }}.</p>\n<table style=\"border-collapse:collapse;margin:12px 0\">\n  <tr><td style=\"padding:4px 16px 4px 0\"><strong>Valor a Pagar:</strong></td><td>{{ frappe.format_value(doc.outstanding_amount, {\"fieldtype\": \"Currency\", \"currency\": doc.currency}) }}</td></tr>\n  <tr><td style=\"padding:4px 16px 4px 0\"><strong>Data Limite:</strong></td><td>{{ frappe.format_date(doc.due_date) }}</td></tr>\n</table>\n<p>Para garantir a continuidade do seu serviço sem interrupções, pedimos que proceda ao pagamento antes da data limite.</p>\n<p><em>Transferência Bancária</em> — ABSA Moçambique | NIB: 000200151510200470737 | Referência: <strong>{{ doc.name }}</strong><br>\n<em>E-Mola</em> — +258 87 4444 645 | Referência: <strong>{{ doc.name }}</strong></p>\n<p>Após o pagamento, envie-nos o comprovativo por <strong>WhatsApp (+258 87 4444 645)</strong> ou escreva-nos para <a href=\"mailto:cloud@mozeconomia.co.mz\" style=\"color:#008000;\">cloud@mozeconomia.co.mz</a> — confirmaremos de imediato.</p>\n<p>Com boas energias,<br><strong>Equipa MozEconomia Cloud</strong></p>",
     "message_type": "HTML",
     "method": null,
-    "modified": "2026-04-08 19:28:15.255866",
+    "modified": "2026-08-09 09:34:54.289368",
     "module": null,
     "name": "AI SaaS - Lembrete 2",
     "print_format": "Fatura (MZ)",
@@ -153,13 +153,13 @@
     "recipients": [
       {
         "bcc": null,
-        "cc": null,
+        "cc": "{{ frappe.get_all('Contact', filters=[['Dynamic Link','link_doctype','=','Customer'],['Dynamic Link','link_name','=',doc.customer],['Contact','is_billing_contact','=',1]], pluck='email_id', limit_page_length=0)|select|reject('equalto',doc.contact_email)|unique|join(',') }}",
         "condition": null,
         "parent": "AI SaaS - Lembrete 2",
         "parentfield": "recipients",
         "parenttype": "Notification",
         "receiver_by_document_field": "contact_email",
-        "receiver_by_role": "All"
+        "receiver_by_role": null
       }
     ],
     "send_system_notification": 0,
@@ -196,13 +196,13 @@
     "recipients": [
       {
         "bcc": null,
-        "cc": null,
+        "cc": "{{ frappe.get_all('Contact', filters=[['Dynamic Link','link_doctype','=','Customer'],['Dynamic Link','link_name','=',doc.customer],['Contact','is_billing_contact','=',1]], pluck='email_id', limit_page_length=0)|select|reject('equalto',doc.contact_email)|unique|join(',') }}",
         "condition": null,
         "parent": "AI SaaS - Lembrete 3",
         "parentfield": "recipients",
         "parenttype": "Notification",
         "receiver_by_document_field": "contact_email",
-        "receiver_by_role": "All"
+        "receiver_by_role": null
       }
     ],
     "send_system_notification": 0,
@@ -282,13 +282,13 @@
     "recipients": [
       {
         "bcc": null,
-        "cc": null,
+        "cc": "{{ frappe.get_all('Contact', filters=[['Dynamic Link','link_doctype','=','Customer'],['Dynamic Link','link_name','=',doc.customer],['Contact','is_billing_contact','=',1]], pluck='email_id', limit_page_length=0)|select|reject('equalto',doc.contact_email)|unique|join(',') }}",
         "condition": null,
         "parent": "AI SaaS - Aviso de Suspensão",
         "parentfield": "recipients",
         "parenttype": "Notification",
         "receiver_by_document_field": "contact_email",
-        "receiver_by_role": "All"
+        "receiver_by_role": null
       }
     ],
     "send_system_notification": 0,
@@ -325,13 +325,13 @@
     "recipients": [
       {
         "bcc": null,
-        "cc": null,
+        "cc": "{{ frappe.get_all('Contact', filters=[['Dynamic Link','link_doctype','=','Customer'],['Dynamic Link','link_name','=',doc.customer],['Contact','is_billing_contact','=',1]], pluck='email_id', limit_page_length=0)|select|reject('equalto',doc.contact_email)|unique|join(',') }}",
         "condition": null,
         "parent": "AI SaaS - Aviso de Desativação",
         "parentfield": "recipients",
         "parenttype": "Notification",
         "receiver_by_document_field": "contact_email",
-        "receiver_by_role": "All"
+        "receiver_by_role": null
       }
     ],
     "send_system_notification": 0,
