@@ -172,6 +172,7 @@ def _step_create_site(prov) -> None:
 		_append_log(prov, "Diretório do site já existe — a saltar bench new-site (tentativa anterior).")
 		return
 
+	db_root_user = _get_db_root_user()
 	db_root_password = _get_db_root_password()
 	site_admin_password = _get_site_admin_password()
 
@@ -186,6 +187,7 @@ def _step_create_site(prov) -> None:
 	_run_cmd(
 		[
 			_get_bench_cmd(), "new-site", prov.site_name,
+			"--db-root-username", db_root_user,
 			"--db-root-password", db_root_password,
 			"--admin-password", site_admin_password,
 			*install_app_args,
@@ -788,6 +790,17 @@ def _make_company_abbr(company_name: str) -> str:
 	words = company_name.split()
 	abbr = "".join(w[0].upper() for w in words if w)[:5]
 	return abbr or "EMP"
+
+
+def _get_db_root_user() -> str:
+	"""MariaDB account used to create the tenant database and its user.
+
+	Defaults to 'root', but on Debian/Ubuntu root@localhost authenticates via the
+	unix_socket plugin and rejects password logins with error 1698 — so a dedicated
+	password-authenticated account must be used instead. Set 'db_root_user' in
+	common_site_config.json to override.
+	"""
+	return frappe.conf.get("db_root_user") or "root"
 
 
 def _get_db_root_password() -> str:
