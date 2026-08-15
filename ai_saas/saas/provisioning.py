@@ -8,7 +8,7 @@ import subprocess
 import frappe
 from frappe.utils.password import get_decrypted_password
 
-_DEFAULT_BENCH_PATH = "/srv/frappe/frappe-bench"
+_DEFAULT_BENCH_PATH = "/home/frappe/frappe-bench"
 _DEFAULT_BENCH_CMD = "/usr/local/bin/bench"
 
 
