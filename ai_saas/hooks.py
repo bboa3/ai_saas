@@ -28,6 +28,9 @@ doc_events = {
 	"Payment Entry": {
 		"before_submit": "ai_saas.payment_entry.set_contact_email",
 	},
+	"Sales Invoice": {
+		"before_submit": "ai_saas.sales_invoice.set_contact_mobile",
+	},
 }
 
 
