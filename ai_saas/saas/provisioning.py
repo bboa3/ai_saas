@@ -26,6 +26,12 @@ WIZARD_TIMEOUT = 300
 # Fallback used only when the Contract has no apps configured
 DEFAULT_APPS = ["erpnext", "hrms", "erpnext_mz"]
 
+# The setup wizard resolves its language argument with its own get_language_code(),
+# which looks the Language up by `language_name` and nothing else.  Handing it the
+# code returns None and the wizard falls back to "en", so it gets the name.
+MZ_LANGUAGE_CODE = "pt-MZ"
+MZ_LANGUAGE_NAME = "Português (Moçambique)"
+
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9\-]{1,38}[a-z0-9]$")
 RESERVED_SLUGS = {"www", "mail", "smtp", "ftp", "admin", "api", "erp", "test","teste", "staging", "assets"}
 
@@ -140,12 +146,8 @@ def _run_provisioning(provisioning_name: str) -> None:
 	frappe.db.commit()
 
 	try:
-		_step_create_site(prov)
-		_step_apply_system_settings(prov)
-		_step_run_setup_wizard(prov)
-		_step_seed_company_profile(prov)
-		_step_setup_smtp(prov)
-		_step_notify_customer(prov)
+		for step in PROVISIONING_STEPS:
+			step(prov)
 
 		prov.status = "Active"
 		prov.provisioned_at = frappe.utils.now()
@@ -207,20 +209,43 @@ def _step_create_site(prov) -> None:
 	_append_log(prov, f"Site {prov.site_name} criado, aplicações instaladas e host_name configurado.")
 
 
-def _step_run_setup_wizard(prov) -> None:
-	prov.status = "Running Setup Wizard"
-	_append_log(prov, "A executar o assistente de configuração")
-	prov.save(ignore_permissions=True)
-	frappe.db.commit()
+def _step_ensure_language(prov) -> None:
+	"""Create the pt-MZ Language record before the wizard runs.
 
+	The wizard resolves its language argument by `language_name`, so the record has to
+	exist by then or the lookup returns None and the wizard writes "en".  `after_install`
+	already creates it; this is the guard for a site whose app install predates that.
+	"""
+	_append_log(prov, "A garantir registo de idioma pt-MZ no novo site")
+	_run_cmd(
+		[
+			_get_bench_cmd(), "--site", prov.site_name,
+			"execute",
+			"erpnext_mz.setup.language.ensure_language_pt_mz",
+		],
+		step="ensure-language",
+		prov=prov,
+		timeout=30,
+	)
+
+
+def build_wizard_args(prov) -> dict:
+	"""The arguments handed to Frappe's setup_complete().
+
+	`language` is what `update_system_settings` reads, `lang` what `update_global_settings`
+	reads -- and both go through the wizard's own `get_language_code()`, which matches on
+	`language_name` alone.  Passing the code "pt-MZ" resolves to None and the wizard writes
+	"en", which is what put a Portuguese tenant on an English desk.  Omitting `lang`
+	separately makes `update_global_settings` call `set_default_language(None)`.
+	"""
 	year = frappe.utils.getdate().year
-	contact_email = prov.contact_email or f"admin@{prov.site_name}"
-	wizard_kwargs = {
+	return {
 		"country": "Mozambique",
-		"language": "pt-MZ",
+		"language": MZ_LANGUAGE_NAME,
+		"lang": MZ_LANGUAGE_NAME,
 		"timezone": "Africa/Maputo",
 		"currency": "MZN",
-		"email": contact_email,
+		"email": prov.contact_email or f"admin@{prov.site_name}",
 		"full_name": prov.customer_name,
 		"password": _get_contact_password(prov),
 		"company_name": prov.customer_name,
@@ -228,6 +253,15 @@ def _step_run_setup_wizard(prov) -> None:
 		"fy_start_date": f"{year}-01-01",
 		"fy_end_date": f"{year}-12-31",
 	}
+
+
+def _step_run_setup_wizard(prov) -> None:
+	prov.status = "Running Setup Wizard"
+	_append_log(prov, "A executar o assistente de configuração")
+	prov.save(ignore_permissions=True)
+	frappe.db.commit()
+
+	wizard_kwargs = build_wizard_args(prov)
 
 	# setup_complete(args) takes a single positional parameter.
 	# bench execute --kwargs expands kwargs as **kwargs, so we must nest the
@@ -247,25 +281,15 @@ def _step_run_setup_wizard(prov) -> None:
 
 
 def _step_apply_system_settings(prov) -> None:
-	"""Ensure pt-MZ language record exists and apply system-wide Mozambique defaults
-	BEFORE setup_complete runs.  setup_complete assigns wizard args.language to the
-	newly created User record; if the Language 'pt-MZ' does not exist at that moment
-	Frappe silently falls back to 'en'.  Running ensure_language_pt_mz first
-	guarantees the Language record is present, and apply_system_settings primes
-	System Settings so the wizard inherits the correct defaults.
-	"""
-	_append_log(prov, "A garantir registo de idioma pt-MZ no novo site")
-	_run_cmd(
-		[
-			_get_bench_cmd(), "--site", prov.site_name,
-			"execute",
-			"erpnext_mz.setup.language.ensure_language_pt_mz",
-		],
-		step="ensure-language",
-		prov=prov,
-		timeout=30,
-	)
+	"""Apply the Mozambique system defaults AFTER the wizard.
 
+	This used to run before it, on the reasoning that the wizard would inherit them.  It
+	does not: `update_system_settings` writes country, currency, time zone, language,
+	date and number format, float precision and rounding method from its own arguments
+	and from the Country record, overwriting whatever was there.  Anything set before the
+	wizard that the wizard also writes is lost -- the language among it, which is how a
+	tenant provisioned in Portuguese ended up with an English desk.
+	"""
 	_append_log(prov, "A aplicar definições de sistema (idioma pt-MZ, MZN, fuso horário)")
 	_run_cmd(
 		[
@@ -835,3 +859,22 @@ def _get_contact_password(prov) -> str:
 
 def _append_log(prov, message: str) -> None:
 	prov.log = (prov.log or "") + f"[{frappe.utils.now()}] {message}\n"
+
+
+# ---------------------------------------------------------------------------
+# The provisioning sequence
+# ---------------------------------------------------------------------------
+
+# Order matters twice over.  The Language record has to exist before the wizard, which
+# resolves its language argument by `language_name`.  And the system defaults have to be
+# applied after it, because `update_system_settings` overwrites language, country,
+# currency, time zone, date and number format with its own values.
+PROVISIONING_STEPS = (
+	_step_create_site,
+	_step_ensure_language,
+	_step_run_setup_wizard,
+	_step_apply_system_settings,
+	_step_seed_company_profile,
+	_step_setup_smtp,
+	_step_notify_customer,
+)
