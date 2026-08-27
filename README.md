@@ -76,205 +76,123 @@ Created automatically by the daily scheduler; managed manually by the commercial
 
 ## Contract Custom Fields
 
-Added programmatically via `install.py` (`after_install` / `after_migrate`).
-Visible in the **"MozEconomia Cloud"** tab of the Contract form.
+Defined in `install.py` (`_sync_custom_fields`, applied on `after_install` / `after_migrate`) and mirrored in
+`fixtures/custom_field.json`. Visible in the **"MozEconomia Cloud"** tab of the Contract form.
 
 | Fieldname | Type | Description |
 |---|---|---|
-| `ai_saas_tab` | Tab Break | "MozEconomia Cloud" section header |
-| `mz_subscription_plan` | Link: Subscription Plan | ERPNext Subscription Plan to use for billing |
-| `mz_tenant` | Data | Customer subdomain slug — user types only the prefix (e.g. `boa-construtora`) |
-| `mz_tenant_url` | Data (read-only) | Full computed access domain: `<slug>.erp.mozeconomia.co.mz` |
-| `contact_email` | Data (Email) | Customer contact email for notifications |
-| `mz_linked_subscription` | Link: Subscription (read-only) | ERPNext Subscription created by the lifecycle hook |
+| `mz_saas_tab` | Tab Break | "MozEconomia Cloud" tab |
+| `mz_subscription_plan` | Link: Subscription Plan | Plan to bill. **Editable after submit** until a Subscription is linked (the customer may correct it at activation) |
+| `mz_tenant` | Data | Customer subdomain slug — the user types only the prefix (e.g. `boa-construtora`) |
+| `mz_tenant_url` | Data (read-only) | Full access domain: `<slug>.erp.mozeconomia.co.mz` |
+| `contact_email` | Data (Email) | Customer contact email for every notification |
+| `mz_linked_subscription` | Link: Subscription (read-only) | Subscription created at signature |
+| `mz_apps_to_install` | Table: MZ Tenant App | Apps installed on the tenant (defaults from `provisioning.DEFAULT_APPS`) |
+| `mz_account_phase` | Select (read-only) | `Trial / Active / Suspended / Closed` — written only by code; **the only marker the lifecycle engine reads**. Empty on contracts created outside the funnel, which the engine never touches |
+| `mz_billing_start` | Date (read-only) | The day billing actually began (later of `start_date` and the signature date); the post-contract notifications anchor here |
+
+`Lead.mz_segment` (Link: Segment Intelligence Map) carries the industry captured at signup.
 
 ### Tenant URL UX
 
-`mz_tenant` is rendered with a visual suffix `.erp.mozeconomia.co.mz` glued to the right of the
-input box (via the "AI SaaS - Contract" Client Script). The user types only the slug; the
-full domain is immediately visible without requiring a separate field description.
-
-`mz_tenant_url` is updated automatically by the same client script as the user types. It stores
-the domain only (no `https://` prefix) — the email template wraps it with `https://`.
+`mz_tenant` is rendered with a visual suffix `.erp.mozeconomia.co.mz` glued to the right of the input
+(Client Script "AI SaaS - Contract"); `mz_tenant_url` is computed as the user types and stores the domain only.
 
 ### Property Setters
 
 | Field | Property | Value | Reason |
 |---|---|---|---|
-| `Contract.start_date` | `reqd` | `1` | Subscriptions cannot be created without a start date |
+| `Contract.start_date` | `reqd` | `1` | It is the trial end and the billing anchor |
 
 ---
 
-## Contract Lifecycle
+## The Funnel
 
-Handled by `ai_saas.saas.contract_lifecycle`.
+The full design is in `docs/sales-funnel.md` (business rationale) and `docs/sales-funnel-implementation.md`
+(itemized, code-verified plan with a per-row review of what was built). In one paragraph:
 
-### Entry Points
+`/registo` (three-step, resumable signup) creates Lead, Opportunity, Customer (group `Cloud - Trial`),
+Contact, Billing Address and an **unsigned, submitted Contract**. Submission provisions the tenant site
+(trial begins, no Subscription). A daily probe reads usage from the trial site and raises hot/cold lead
+signals; countdown emails anchor on `Contract.start_date`. `/activar` signs the contract — through the
+document save path, so the hooks run — which creates the Subscription with billing starting on the later
+of `start_date` and the signature date. If nobody signs, the lifecycle engine suspends the site on
+`start_date`, and archives it (full backup, then `drop-site`) after the grace period. Overdue invoices
+suspend 33 days after their due date. **Nothing counts days; everything reads dates.**
 
-| Event | Hook | Registered In |
+### Two triggers, split along the signature (`ai_saas.saas.contract_lifecycle`)
+
+| Event | Handler | Does |
 |---|---|---|
-| `Contract.on_submit` | `on_contract_signed` | `hooks.py` `doc_events` |
-| `Contract.on_update_after_submit` | `on_contract_signed` | `hooks.py` `doc_events` |
-| `Contract.on_cancel` | `on_contract_cancel` | `hooks.py` `doc_events` |
+| `Contract.on_submit` | `on_contract_submitted` | Stamps `mz_account_phase` (`Trial`, or `Active` if already signed), queues provisioning regardless of signature, creates the Subscription only if already signed |
+| `Contract.on_update_after_submit` | `on_contract_signed` | Acts only on the `is_signed` 0→1 transition: Subscription, phase `Active`, customer moved out of the trial group; guards the plan against changes once a Subscription exists |
+| `Contract.on_cancel` | `on_contract_cancel` | Cancels the linked Subscription |
 
-### Subscription Creation (`on_contract_signed`)
+Subscription: `generate_invoice_at = "Beginning of the current subscription period"`, `submit_invoice = 1`,
+`days_until_due = 7`, `generate_new_invoices_past_due_date = 0`. When billing starts today, the first
+invoice is issued immediately (`sub.process(today)`) — ERPNext only generates on an exact date match.
 
-Fires on both `on_submit` and `on_update_after_submit` with the same handler.
+### Modules
 
-**Conditions** — all must be true for action:
-- `doc.party_type == "Customer"`
-- `doc.is_signed == True`
-- `doc.mz_subscription_plan` is set
-- `doc.mz_linked_subscription` is empty (not already created)
+| Module | Role |
+|---|---|
+| `api/signup.py` | Guest endpoints behind `/registo`: `start`, `update`, `check_subdomain`, `submit`, `status`. Token-only access; one live signup per email; duplicates refused generically at submit |
+| `saas/activation.py` + `www/activar` | Token-gated activation page and transaction (`get_activation_url` is exposed to Jinja) |
+| `saas/provisioning.py` | Site creation (`provision_tenant`), retry of `Failed` records, delivery email from the `MozEconomia Cloud - Entrega da Conta` Email Template |
+| `saas/tenant_lifecycle.py` | `suspend` / `reactivate` / `archive` and the daily engine (`process_lifecycle`) — **unarmed by default** |
+| `saas/usage_signals.py` + `erpnext_mz.utils.tenant_usage` | Daily read-only probe of trial sites (the probe ships in erpnext_mz, the app tenants have) → `MZ Tenant Usage Snapshot` → hot/cold signals on the Opportunity |
+| `saas/billing_monitor.py` | Pre-billing reminder, D+1 overdue review row, commercial follow-up ToDo + call Event |
+| `saas/crm.py` | Opportunity resolution and sales ToDos |
+| `install.py` | Custom fields, Contract Template, Email Template, Calendly booking link (`MZ SaaS Settings.booking_url`), trial Customer Group, sales stages, legacy-form retirement |
 
-**Actions:**
-1. Resolves default company from user defaults or `Global Defaults`
-2. Resolves `Sales Taxes and Charges Template` (default for company)
-3. Creates ERPNext `Subscription` with:
-   - `party_type = "Customer"`, `party = doc.party_name`
-   - `start_date` / `end_date` from Contract
-   - `generate_invoice_at = "Beginning of the current subscription period"`
-   - `submit_invoice = 1` (auto-submits generated invoices)
-   - `days_until_due = 7`
-   - `generate_new_invoices_past_due_date = 1`
-   - `plans = [{"plan": mz_subscription_plan, "qty": 1}]`
-4. Stores the Subscription name in `Contract.mz_linked_subscription`
+### DocTypes
 
-> **Note:** Subscription status is managed entirely by the ERPNext Subscription controller.
-> `ai_saas` does not set or change `review_status` / service status on the Contract.
-
-### Subscription Cancellation (`on_contract_cancel`)
-
-1. Reads `mz_linked_subscription` from the Contract
-2. If the linked Subscription exists and its status is not `"Cancelled"`:
-   - Calls `sub.cancel_subscription()`
-   - Saves the Subscription with `ignore_permissions=True`
-
-### Full Flow
-
-```
-Contract (Draft)
-  → set mz_subscription_plan, mz_tenant, contact_email, start_date
-  → [Sign + Save] → on_contract_signed()
-       └── _setup_subscription()
-             └── ERPNext Subscription created (SUB-YYYY-xxxx)
-             └── mz_linked_subscription saved on Contract
-             └── ERPNext auto-generates Sales Invoices on billing cycle start
-
-  → Frappe Notification fires on Contract submit:
-       └── "AI SaaS - Boas-Vindas" → email to party_user (CC: Customer.email_id or contact_email)
-
-[ERPNext daily scheduler]
-  └── Generates Sales Invoice → auto-submitted (submit_invoice=1)
-       └── "AI SaaS - Fatura Emitida" notification → email with attached invoice
-
-[ERPNext notification scheduler — daily]
-  ├── "AI SaaS - Lembrete 1" → D-6 before due date (days_in_advance=4 from posting_date)
-  ├── "AI SaaS - Lembrete 2" → D-3 before due date (days_in_advance=7 from posting_date)
-  ├── "AI SaaS - Lembrete 3" → D-1 before due date (days_in_advance=7 from posting_date)
-  ├── "AI SaaS - Escalação Comercial" → internal alert to Sales Manager role
-  ├── "AI SaaS - Aviso de Suspensão" → D+1 after due date
-  └── "AI SaaS - Aviso de Desativação" → D+8 after due date
-
-[ai_saas daily scheduler]
-  └── flag_overdue_customers()
-       ├── D-4: pre-billing reminder email (direct sendmail, not a Notification fixture)
-       ├── D+1: creates MZ Overdue Review (Pending Review)
-       ├── D+7: creates ToDo + Call Event for commercial team
-       └── D+15: creates MZ Overdue Review (Deactivate)
-
-[Contract cancel]
-  → on_contract_cancel() → Subscription cancelled
-```
+| DocType | Role |
+|---|---|
+| `MZ SaaS Settings` (Single) | Trial length, dry-run switch, suspension/grace/reminder thresholds, ops alert recipients, default sales user, commercial customer group, self-service ceilings |
+| `MZ Signup` | One row per signup in progress (resume token, step timestamps, links to the documents created) |
+| `MZ Tenant Provisioning` | One record per contract for life: status incl. `Suspended` / `Archived`, `suspended_on`, `backup_path`, log |
+| `MZ Tenant Usage Snapshot` | One row per trial per day from the probe |
+| `MZ Overdue Review` | Dunning review queue; `Suspend` / `Reactivate` / `Deactivate` **execute** through `tenant_lifecycle` |
 
 ---
 
 ## Email Notifications
 
-Defined as fixtures in `fixtures/notification.json`. All use `channel = "Email"` and `message_type = "HTML"`.
+Fixtures in `fixtures/notification.json` — 25 records, all `AI SaaS - *`. None sends to a bare role.
 
-| Name | DocType | Event | Condition | Recipient |
-|---|---|---|---|---|
-| AI SaaS - Boas-Vindas | Contract | Value Change (`is_signed`) | `is_signed and party_type == 'Customer'` | `party_user` (TO) + `Customer.email_id` or `contact_email` (CC) |
-| AI SaaS - Fatura Emitida | Sales Invoice | Submit | `doc.subscription` | `contact_email` (TO) + Role: All |
-| AI SaaS - Lembrete 1 | Sales Invoice | Days after `posting_date` (+4) | `subscription and outstanding_amount > 0` | `contact_email` (TO) + Role: All |
-| AI SaaS - Lembrete 2 | Sales Invoice | Days after `posting_date` (+7) | `subscription and outstanding_amount > 0` | `contact_email` (TO) + Role: All |
-| AI SaaS - Lembrete 3 | Sales Invoice | Days after `posting_date` (+7) | `subscription and outstanding_amount > 0` | `contact_email` (TO) + Role: All |
-| AI SaaS - Escalação Comercial | Sales Invoice | Days after `posting_date` (+7) | `subscription and outstanding_amount > 0` | Role: Sales Manager |
-| AI SaaS - Aviso de Suspensão | Sales Invoice | Days after `due_date` (+1) | `subscription and outstanding_amount > 0` | `contact_email` (TO) + Role: All |
-| AI SaaS - Aviso de Desativação | Sales Invoice | Days after `due_date` (+8) | `subscription and outstanding_amount > 0` | `contact_email` (TO) + Role: All |
+| Group | Records | Anchor | Recipient |
+|---|---|---|---|
+| Welcome + unfinished-signup nurture | `Lead Nurture - Dia 0` (on New — the **welcome** email), `Dia 3/5/10/15/20/30` (Days After `modified`) | `MZ Signup`, while `status == "Started"` (a restart supersedes the older row) | signup `email`; every body carries the resume link, the way back in for whoever has not finished |
+| Trial countdown | `Trial - 7 dias`, `- 3 dias`, `- Último dia amanhã`, `- Hoje` (Days Before `start_date`) | Contract, unsigned, phase `Trial` | `contact_email`; copy branches on the latest usage snapshot; activation + booking links |
+| Invoice + dunning | `Fatura Emitida`, `SMS Fatura Emitida`, `Lembrete 1/2/3` (+1/+4/+7 from `posting_date`), `Aviso de Suspensão` (+1 from `due_date`), `Aviso de Desativação` (+30 from `due_date`), `Recibo de Pagamento` — every one conditioned on `doc.is_return == 0` | Sales Invoice / Payment Entry | `contact_email` (+ billing contacts in CC) |
+| Credit note | `Nota de Crédito` (on Submit, `doc.is_return == 1 and not doc.is_pos`), `Nota de Crédito (MZ)` attached | Sales Invoice | `contact_email` (+ billing contacts in CC) |
+| Internal | `Escalação Comercial` (+7) | Sales Invoice | role Sales Manager |
+| Post-contract | `Pós-Contrato Dia 3/5/33` (Days After `mz_billing_start`) | Contract, signed | `contact_email` |
+| Booking | `Marcação Confirmada` (on New) | Appointment | `customer_email` |
 
-### Recipient Strategy
+Every customer-facing email names only actions and dates the engine will actually take: suspension is
+**33 days after the due date**, never "nas próximas horas".
 
-- **Boas-Vindas** uses `receiver_by_document_field = "party_user"` so the Contract creator
-  (a Frappe User) receives the welcome email and can access the payment portal link.
-  The `cc` Jinja field resolves `Customer.email_id or Contract.contact_email` to also reach
-  the customer's external contact email.
-- **All billing notifications** use `receiver_by_document_field = "contact_email"` on the
-  Sales Invoice (ERPNext natively populates this from the Customer contact) with
-  `receiver_by_role = "All"` as a fallback to guarantee delivery.
-- **Escalação Comercial** sends only to `receiver_by_role = "Sales Manager"` (internal only).
-
-### `mz_tenant_url` in Welcome Email
-
-The Boas-Vindas template includes:
-```html
-{% if doc.mz_tenant_url %}
-<a href="https://{{ doc.mz_tenant_url }}">{{ doc.mz_tenant_url }}</a>
-{% endif %}
-```
-
-`doc.mz_tenant_url` stores the domain only (`slug.erp.mozeconomia.co.mz`).
-The template prepends `https://` to form the full clickable URL.
-
-### Pre-billing Reminder (D-4)
-
-The `billing_monitor.flag_overdue_customers()` function sends a pre-billing reminder
-**4 days before the invoice is generated** via direct `frappe.sendmail()`, not a Notification fixture.
-This targets active Subscriptions where `current_invoice_start = today + 4 days`.
+The delivery (welcome) email is not a Notification: `provisioning._send_welcome_email` renders the
+`MozEconomia Cloud - Entrega da Conta` Email Template (trial copy with activate/book links, or billing copy
+when the contract was already signed).
 
 ---
 
 ## Billing Monitor
 
-`ai_saas.saas.billing_monitor.flag_overdue_customers`
+`ai_saas.saas.billing_monitor.flag_overdue_customers` — daily. Thresholds come from `MZ SaaS Settings`.
 
-Runs daily. Executes the full overdue escalation pipeline in one call:
+1. **Pre-billing reminder** (`prebilling_reminder_days` before `current_invoice_start`, default 4) — direct email to `contact_email`.
+2. **Overdue review row** — one `MZ Overdue Review` (`Pending Review`) per contract per overdue invoice.
+3. **Commercial follow-up** (`overdue_followup_days`, default 7) — High ToDo + call Event, one open ToDo per contract.
 
-### 1. Pre-billing Reminder (D-4)
-
-- Finds active Subscriptions where `current_invoice_start = today + 4 days`
-- For each, resolves the linked Contract via `mz_linked_subscription`
-- Sends a direct email to `contract.contact_email` with:
-  - Service period dates
-  - Estimated billing amount
-  - 7-day payment notice
-
-### 2. Overdue Review Creation (D+1)
-
-- Queries submitted Sales Invoices with `subscription IS NOT NULL`, `outstanding_amount > 0`, `due_date < today`
-- For each, resolves Contract via `mz_linked_subscription`
-- Creates `MZ Overdue Review` with `review_status = "Pending Review"`
-- **Deduplication:** skips if a record with `Pending Review` or `Deactivate` status already exists
-
-### 3. D+7 Follow-up Tasks
-
-- Filters overdue invoices with `days_overdue >= 7`
-- For each contract (deduplicated), creates:
-  - **ToDo** (High priority, Open) with customer, amount, and days overdue
-  - **Event** (Call type, scheduled tomorrow at 09:00) with the same details
-- Skips if an open ToDo for the contract already exists
-
-### 4. D+15 Deactivation Queue
-
-- Filters overdue invoices with `days_overdue >= 15`
-- Creates `MZ Overdue Review` with `review_status = "Deactivate"` and auto-generated notes
-- Skips if a `Deactivate` record already exists for the contract
-
-### Manual Execution
+Suspension and archive are **not** here: `tenant_lifecycle.process_lifecycle` reads dates and acts.
 
 ```bash
 bench --site erp.local execute ai_saas.saas.billing_monitor.flag_overdue_customers
+bench --site erp.local execute ai_saas.saas.tenant_lifecycle.process_lifecycle   # honours dry-run
 ```
 
 ---
@@ -283,11 +201,12 @@ bench --site erp.local execute ai_saas.saas.billing_monitor.flag_overdue_custome
 
 | Type | Function | Purpose |
 |---|---|---|
-| `daily` | `ai_saas.saas.billing_monitor.flag_overdue_customers` | Full overdue escalation pipeline |
-| ERPNext native daily | `frappe.email.doctype.notification.notification.trigger_daily_alerts` | Fires all "Days Before/After" notifications |
-
-The `trigger_daily_alerts` scheduler is already registered in ERPNext — no additional
-scheduler entry is needed in `ai_saas` for the notification-based reminders.
+| `daily` | `ai_saas.saas.billing_monitor.flag_overdue_customers` | Reminders, review rows, follow-ups |
+| `daily` | `ai_saas.saas.tenant_lifecycle.process_lifecycle` | Trial expiry → suspend; 33 days overdue → suspend; grace elapsed → archive (dry-run until switched off) |
+| `daily` | `ai_saas.saas.usage_signals.collect_usage_snapshots` | Probe trial sites, hot/cold signals |
+| `daily` | `ai_saas.multipay.tasks.sync_pending_payments` | Multipay reconciliation |
+| `hourly` | `ai_saas.saas.provisioning.retry_stuck_provisioning` | Re-queue stuck provisioning |
+| ERPNext native daily | `trigger_daily_alerts` | Fires every "Days Before/After" notification |
 
 ---
 

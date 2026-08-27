@@ -1,14 +1,18 @@
 import frappe
-from frappe.utils import add_days, nowdate, getdate
+from frappe.utils import add_days, getdate, nowdate
 
 
 def flag_overdue_customers():
-	"""Daily: handle all overdue billing actions and pre-billing reminders."""
+	"""Daily: pre-billing reminders, the D+1 review row, and the commercial follow-up.
+
+	Thresholds come from MZ SaaS Settings (F1). Suspension and archive belong to
+	tenant_lifecycle.process_lifecycle — the old D+15 "deactivation queue" writer
+	is retired (F5): its rows were read by nobody, while the engine acts on dates.
+	"""
 	_send_prebilling_reminders()
 	overdue = _get_overdue_invoices()
 	_create_overdue_reviews(overdue)
-	_create_d7_followup_tasks(overdue)
-	_process_d15_deactivations(overdue)
+	_create_followup_tasks(overdue)
 	frappe.db.commit()
 
 
@@ -17,18 +21,21 @@ def flag_overdue_customers():
 # ---------------------------------------------------------------------------
 
 def _send_prebilling_reminders():
-	"""Send a pre-billing email 4 days before the next invoice is generated.
+	"""Send a pre-billing email N days before the next invoice is generated.
 
-	Queries active Subscriptions whose current_invoice_start is 4 days from
+	Queries active Subscriptions whose current_invoice_start is N days from
 	today — i.e. the invoice has not been created yet.  For each, resolves
 	the linked Contract and sends a templated email to contact_email.
 	"""
-	target_date = getdate(add_days(nowdate(), 4))
+	from ai_saas.saas.tenant_lifecycle import get_settings
+
+	lead_days = get_settings().prebilling_reminder_days
+	target_date = getdate(add_days(nowdate(), lead_days))
 
 	subscriptions = frappe.db.get_all(
 		"Subscription",
 		filters={"status": "Active", "current_invoice_start": target_date},
-		fields=["name", "party", "current_invoice_start", "current_invoice_end", "plans"],
+		fields=["name", "party", "current_invoice_start", "current_invoice_end"],
 	)
 
 	for sub in subscriptions:
@@ -49,10 +56,10 @@ def _send_prebilling_reminders():
 			"Subscription Plan", plan_name, ["plan_name", "cost", "currency"], as_dict=True
 		) if plan_name else None
 
-		_send_prebilling_email(sub, contract, plan)
+		_send_prebilling_email(sub, contract, plan, lead_days)
 
 
-def _send_prebilling_email(sub, contract, plan):
+def _send_prebilling_email(sub, contract, plan, lead_days):
 	"""Send the pre-billing email for a single subscription."""
 	from frappe.utils.formatters import format_value
 
@@ -68,7 +75,7 @@ def _send_prebilling_email(sub, contract, plan):
 	customer_name = frappe.db.get_value("Customer", sub.party, "customer_name") or sub.party
 	message = f"""
 <p>Prezado {customer_name},</p>
-<p>Informamos que a sua fatura referente ao período <strong>{start} — {end}</strong> será emitida em <strong>4 dias</strong>.</p>
+<p>Informamos que a sua fatura referente ao período <strong>{start} — {end}</strong> será emitida em <strong>{lead_days} dias</strong>.</p>
 <table style="border-collapse:collapse;margin:12px 0">
   <tr><td style="padding:4px 16px 4px 0"><strong>Período de Serviço:</strong></td><td>{start} — {end}</td></tr>
   {amount_text}
@@ -84,7 +91,7 @@ def _send_prebilling_email(sub, contract, plan):
 
 	frappe.sendmail(
 		recipients=[contract.contact_email],
-		subject=f"Aviso de Faturação — A sua fatura será emitida em 4 dias | MozEconomia Cloud",
+		subject=f"Aviso de Faturação — A sua fatura será emitida em {lead_days} dias | MozEconomia Cloud",
 		message=message,
 		reference_doctype="Contract",
 		reference_name=contract.name,
@@ -119,10 +126,8 @@ def _create_overdue_reviews(invoices):
 		contract = frappe.db.get_value("Contract", {"mz_linked_subscription": inv.subscription}, "name")
 		if not contract:
 			continue
-		if frappe.db.exists(
-			"MZ Overdue Review",
-			{"contract": contract, "review_status": ["in", ["Pending Review", "Deactivate"]]},
-		):
+		# One review per contract per overdue invoice, whatever state the team moved it to.
+		if frappe.db.exists("MZ Overdue Review", {"contract": contract, "overdue_since": inv.due_date}):
 			continue
 
 		frappe.get_doc({
@@ -135,11 +140,14 @@ def _create_overdue_reviews(invoices):
 		}).insert(ignore_permissions=True)
 
 
-def _create_d7_followup_tasks(invoices):
-	"""D+7: create a sales ToDo task and a phone-call Event for follow-up."""
-	d7_invoices = [inv for inv in invoices if inv.days_overdue >= 7]
+def _create_followup_tasks(invoices):
+	"""Overdue follow-up: create a sales ToDo task and a phone-call Event."""
+	from ai_saas.saas.tenant_lifecycle import get_settings
 
-	for inv in d7_invoices:
+	threshold = get_settings().overdue_followup_days
+	flagged = [inv for inv in invoices if inv.days_overdue >= threshold]
+
+	for inv in flagged:
 		if not inv.subscription:
 			continue
 		contract = frappe.db.get_value("Contract", {"mz_linked_subscription": inv.subscription}, "name")
@@ -180,35 +188,4 @@ def _create_d7_followup_tasks(invoices):
 			"event_type": "Private",
 			"starts_on": call_datetime,
 			"description": description,
-		}).insert(ignore_permissions=True)
-
-
-def _process_d15_deactivations(invoices):
-	"""D+15: move contract to Deactivation Queue if still unpaid."""
-	d15_invoices = [inv for inv in invoices if inv.days_overdue >= 15]
-
-	for inv in d15_invoices:
-		if not inv.subscription:
-			continue
-		contract = frappe.db.get_value("Contract", {"mz_linked_subscription": inv.subscription}, "name")
-		if not contract:
-			continue
-
-		if frappe.db.exists(
-			"MZ Overdue Review",
-			{"contract": contract, "review_status": "Deactivate"},
-		):
-			continue
-
-		frappe.get_doc({
-			"doctype": "MZ Overdue Review",
-			"customer": inv.customer,
-			"contract": contract,
-			"outstanding_amount": inv.outstanding_amount,
-			"overdue_since": inv.due_date,
-			"review_status": "Deactivate",
-			"notes": (
-				f"Movido automaticamente para fila de desactivação após "
-				f"{inv.days_overdue} dias de atraso."
-			),
 		}).insert(ignore_permissions=True)

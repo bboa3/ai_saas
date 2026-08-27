@@ -1,0 +1,15 @@
+[
+ {
+  "doc_type": "Contract",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocField",
+  "field_name": "start_date",
+  "is_system_generated": 0,
+  "module": "AI SaaS",
+  "name": "Contract-start_date-reqd",
+  "property": "reqd",
+  "property_type": "Check",
+  "value": "1"
+ }
+]

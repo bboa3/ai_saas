@@ -8,15 +8,17 @@ import subprocess
 import frappe
 from frappe.utils.password import get_decrypted_password
 
+from ai_saas.saas.alerts import notify_ops, ops_alert_recipients  # noqa: F401 — re-exported for callers
+
 _DEFAULT_BENCH_PATH = "/home/frappe/frappe-bench"
 _DEFAULT_BENCH_CMD = "/usr/local/bin/bench"
 
 
-def _get_bench_path() -> str:
+def get_bench_path() -> str:
 	return frappe.conf.get("bench_path") or _DEFAULT_BENCH_PATH
 
 
-def _get_bench_cmd() -> str:
+def get_bench_cmd() -> str:
 	return frappe.conf.get("bench_cmd") or _DEFAULT_BENCH_CMD
 DOMAIN_SUFFIX = ".erp.mozeconomia.co.mz"
 MAX_ATTEMPTS = 3
@@ -24,7 +26,9 @@ PROVISION_TIMEOUT = 1200  # 20 min — bench new-site + app installs
 WIZARD_TIMEOUT = 300
 
 # Fallback used only when the Contract has no apps configured
-DEFAULT_APPS = ["erpnext", "hrms", "erpnext_mz"]
+# The apps a tenant gets when the contract names none. Single source of truth:
+# install.py renders it into the Contract client script, api/signup.py fills it in.
+DEFAULT_APPS = ["erpnext", "hrms", "erpnext_mz", "pos_next", "payments"]
 
 # The setup wizard resolves its language argument with its own get_language_code(),
 # which looks the Language up by `language_name` and nothing else.  Handing it the
@@ -56,11 +60,25 @@ def provision_tenant(contract_name: str) -> None:
 	if not slug:
 		return
 
-	existing = frappe.db.get_value("MZ Tenant Provisioning", {"contract": contract_name}, "name")
+	existing = frappe.db.get_value(
+		"MZ Tenant Provisioning", {"contract": contract_name}, ["name", "status"], as_dict=True
+	)
 	if existing:
+		# One record per contract for life — signing later can never create a second
+		# site. The only state that gets a second chance is Failed (C1): a re-submitted
+		# or re-signed contract re-queues it; every other status keeps the silent return.
+		if existing.status == "Failed":
+			retry_failed_provisioning(existing.name, trigger=f"contrato {contract_name} re-processado")
 		return
 
-	_validate_slug(slug)
+	validate_slug(slug)
+	# Two contracts must never share a slug: the second's setup wizard would run
+	# against the first customer's site. Surfaced to the user like an invalid slug.
+	holder = frappe.db.get_value("MZ Tenant Provisioning", {"tenant_slug": slug}, "contract")
+	if holder and holder != contract_name:
+		frappe.throw(
+			f"O subdomínio '{slug}' já está atribuído ao contrato {holder}.", frappe.ValidationError
+		)
 
 	customer_name = (
 		frappe.db.get_value("Customer", contract.party_name, "customer_name")
@@ -169,13 +187,13 @@ def _step_create_site(prov) -> None:
 	prov.save(ignore_permissions=True)
 	frappe.db.commit()
 
-	site_dir = os.path.join(_get_bench_path(), "sites", prov.site_name)
+	site_dir = os.path.join(get_bench_path(), "sites", prov.site_name)
 	if os.path.exists(site_dir):
 		_append_log(prov, "Diretório do site já existe — a saltar bench new-site (tentativa anterior).")
 		return
 
-	db_root_user = _get_db_root_user()
-	db_root_password = _get_db_root_password()
+	db_root_user = get_db_root_user()
+	db_root_password = get_db_root_password()
 	site_admin_password = _get_site_admin_password()
 
 	apps = [row.app_name for row in (prov.get("mz_provisioning_apps") or []) if row.app_name]
@@ -186,9 +204,9 @@ def _step_create_site(prov) -> None:
 	for app in apps:
 		install_app_args += ["--install-app", app]
 
-	_run_cmd(
+	run_cmd(
 		[
-			_get_bench_cmd(), "new-site", prov.site_name,
+			get_bench_cmd(), "new-site", prov.site_name,
 			"--db-root-username", db_root_user,
 			"--db-root-password", db_root_password,
 			"--admin-password", site_admin_password,
@@ -200,8 +218,8 @@ def _step_create_site(prov) -> None:
 		prov=prov,
 		timeout=PROVISION_TIMEOUT,
 	)
-	_run_cmd(
-		[_get_bench_cmd(), "--site", prov.site_name, "set-config", "host_name", f"https://{prov.site_name}"],
+	run_cmd(
+		[get_bench_cmd(), "--site", prov.site_name, "set-config", "host_name", f"https://{prov.site_name}"],
 		step="set-hostname",
 		prov=prov,
 		timeout=15,
@@ -217,9 +235,9 @@ def _step_ensure_language(prov) -> None:
 	already creates it; this is the guard for a site whose app install predates that.
 	"""
 	_append_log(prov, "A garantir registo de idioma pt-MZ no novo site")
-	_run_cmd(
+	run_cmd(
 		[
-			_get_bench_cmd(), "--site", prov.site_name,
+			get_bench_cmd(), "--site", prov.site_name,
 			"execute",
 			"erpnext_mz.setup.language.ensure_language_pt_mz",
 		],
@@ -266,9 +284,9 @@ def _step_run_setup_wizard(prov) -> None:
 	# setup_complete(args) takes a single positional parameter.
 	# bench execute --kwargs expands kwargs as **kwargs, so we must nest the
 	# wizard data under the key "args" so bench calls setup_complete(args={...}).
-	_run_cmd(
+	run_cmd(
 		[
-			_get_bench_cmd(), "--site", prov.site_name,
+			get_bench_cmd(), "--site", prov.site_name,
 			"execute",
 			"frappe.desk.page.setup_wizard.setup_wizard.setup_complete",
 			"--kwargs", json.dumps({"args": wizard_kwargs}),
@@ -291,9 +309,9 @@ def _step_apply_system_settings(prov) -> None:
 	tenant provisioned in Portuguese ended up with an English desk.
 	"""
 	_append_log(prov, "A aplicar definições de sistema (idioma pt-MZ, MZN, fuso horário)")
-	_run_cmd(
+	run_cmd(
 		[
-			_get_bench_cmd(), "--site", prov.site_name,
+			get_bench_cmd(), "--site", prov.site_name,
 			"execute",
 			"erpnext_mz.setup.language.apply_system_settings",
 			"--kwargs", '{"override": 1}',
@@ -315,9 +333,9 @@ def _step_seed_company_profile(prov) -> None:
 		_append_log(prov, "AVISO: Sem dados de cliente para pré-preencher — passo ignorado.")
 		return
 
-	_run_cmd(
+	run_cmd(
 		[
-			_get_bench_cmd(), "--site", prov.site_name,
+			get_bench_cmd(), "--site", prov.site_name,
 			"execute",
 			"erpnext_mz.setup.onboarding.seed_company_profile",
 			"--kwargs", json.dumps({"data": data}),
@@ -327,6 +345,42 @@ def _step_seed_company_profile(prov) -> None:
 		timeout=60,
 	)
 	_append_log(prov, f"Perfil pré-preenchido: {', '.join(data.keys())}")
+
+
+def _structured_address(addr, contract_name) -> dict:
+	"""Address parts for the tenant profile: the Address record's own fields, with the
+	gaps filled by parsing whatever one-line text exists (Address.address_line1, else
+	the signup's typed address). Keys: address_line1, neighborhood_or_district, city, province."""
+	from ai_saas.saas.mz_address import parse_mz_address
+
+	out = {}
+	if addr:
+		if addr.address_line1:
+			out["address_line1"] = addr.address_line1
+		if addr.address_line2:
+			out["neighborhood_or_district"] = addr.address_line2
+		if addr.city:
+			out["city"] = addr.city
+		if addr.state:
+			out["province"] = addr.state
+
+	if not out.get("city"):
+		# The city the visitor answered on the form when the typed line had none.
+		out["city"] = frappe.db.get_value("MZ Signup", {"contract": contract_name}, "city") or ""
+		if not out["city"]:
+			out.pop("city", None)
+
+	needs_parsing = not (out.get("city") and out.get("address_line1"))
+	one_line = (addr.address_line1 if addr and addr.address_line1 else "") or ""
+	if not one_line:
+		one_line = frappe.db.get_value("MZ Signup", {"contract": contract_name}, "address") or ""
+	if needs_parsing and one_line:
+		parsed = parse_mz_address(", ".join(p for p in (one_line, addr.address_line2 if addr else "") if p))
+		for src, dst in (("address_line1", "address_line1"), ("address_line2", "neighborhood_or_district"),
+		                 ("city", "city"), ("state", "province")):
+			if parsed.get(src) and not out.get(dst):
+				out[dst] = parsed[src]
+	return out
 
 
 def _collect_customer_profile(prov) -> dict:
@@ -418,6 +472,7 @@ def _collect_customer_profile(prov) -> dict:
 				"parent",
 			)
 		)
+		addr = None
 		if address_name:
 			addr = frappe.db.get_value(
 				"Address",
@@ -425,22 +480,74 @@ def _collect_customer_profile(prov) -> dict:
 				["address_line1", "address_line2", "city", "state", "phone"],
 				as_dict=True,
 			)
-			if addr:
-				if addr.address_line1:
-					data["address_line1"] = addr.address_line1
-				if addr.address_line2:
-					data["neighborhood_or_district"] = addr.address_line2
-				if addr.city:
-					data["city"] = addr.city
-				if addr.state:
-					data["province"] = addr.state
-				if addr.phone and not data.get("phone"):
-					data["phone"] = addr.phone
+		if addr and addr.phone and not data.get("phone"):
+			data["phone"] = addr.phone
+
+		# The tenant's company profile wants structured parts (line, bairro, city,
+		# province). Wherever the address arrived as one line — a sales user typing the
+		# whole thing into address_line1, a Customer with no Address but a signup that
+		# captured one — the same parser used at signup normalises it. Structured parts
+		# already on the Address always win; the parser only fills what is missing.
+		data.update(_structured_address(addr, prov.contract))
 
 		return data
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "AI SaaS: _collect_customer_profile failed")
 		return {}
+
+
+# ---------------------------------------------------------------------------
+# Scheduler policy: background jobs are a Premium feature
+# ---------------------------------------------------------------------------
+
+SCHEDULER_TIMEOUT = 60
+
+
+def scheduler_enabled_for_plan(plan_name) -> bool:
+	"""The tenant's scheduler is on when the contract's plan is listed in
+	MZ SaaS Settings.scheduler_plans — the one place the team decides which plans
+	include background jobs. No plan, or a plan not listed, means no scheduler."""
+	if not plan_name:
+		return False
+	from ai_saas.saas.tenant_lifecycle import get_settings
+
+	return plan_name in get_settings().scheduler_plans
+
+
+def scheduler_enabled_for_contract(contract_name) -> bool:
+	return scheduler_enabled_for_plan(frappe.db.get_value("Contract", contract_name, "mz_subscription_plan"))
+
+
+def _apply_scheduler_state(prov, enabled: bool, trigger: str = "provisionamento") -> None:
+	"""`bench enable-scheduler` / `disable-scheduler` write System Settings.enable_scheduler
+	on the tenant — the switch frappe.utils.scheduler.is_scheduler_disabled reads."""
+	_append_log(prov, f"Agendador do site: {'ACTIVADO' if enabled else 'DESACTIVADO'} pelo plano do contrato ({trigger})")
+	run_cmd(
+		[get_bench_cmd(), "--site", prov.site_name, "enable-scheduler" if enabled else "disable-scheduler"],
+		f"scheduler-policy ({trigger})", prov, SCHEDULER_TIMEOUT,
+	)
+
+
+def _step_apply_scheduler_policy(prov) -> None:
+	"""After the wizard and system settings (either could touch enable_scheduler):
+	the plan decides. Explicit both ways — Frappe's default is not a policy."""
+	_apply_scheduler_state(prov, scheduler_enabled_for_contract(prov.contract))
+
+
+def apply_scheduler_policy(contract_name) -> bool:
+	"""Re-apply the plan's scheduler policy to a live site — called at signature,
+	because the plan may have been corrected at activation. Returns the state set.
+	Raises ProvisioningError if the bench command fails; no-op without a live site."""
+	prov = frappe.db.get_value(
+		"MZ Tenant Provisioning", {"contract": contract_name, "status": ("in", ["Active", "Suspended"])}, "name"
+	)
+	if not prov:
+		return False
+	prov = frappe.get_doc("MZ Tenant Provisioning", prov)
+	enabled = scheduler_enabled_for_contract(contract_name)
+	_apply_scheduler_state(prov, enabled, trigger="assinatura")
+	frappe.db.set_value("MZ Tenant Provisioning", prov.name, "log", prov.log, update_modified=False)
+	return enabled
 
 
 def _step_setup_smtp(prov) -> None:
@@ -449,9 +556,9 @@ def _step_setup_smtp(prov) -> None:
 	that a misconfigured SMTP server never blocks the provisioning from completing."""
 	_append_log(prov, "A configurar email no novo site")
 	try:
-		_run_cmd(
+		run_cmd(
 			[
-				_get_bench_cmd(), "--site", prov.site_name,
+				get_bench_cmd(), "--site", prov.site_name,
 				"execute",
 				"erpnext_mz.setup.onboarding.ensure_smtp_infrastructure_manually",
 			],
@@ -502,9 +609,9 @@ def _generate_password_reset_link(prov) -> str:
 		"__import__('ai_saas.saas.site_helpers', fromlist=['generate_user_reset_link'])"
 		".generate_user_reset_link"
 	)
-	raw = _run_cmd_capture(
+	raw = run_cmd_capture(
 		[
-			_get_bench_cmd(), "--site", prov.site_name, "execute", method,
+			get_bench_cmd(), "--site", prov.site_name, "execute", method,
 			"--kwargs", json.dumps({"email": prov.contact_email}),
 		],
 		step="reset-key",
@@ -523,7 +630,7 @@ def _generate_password_reset_link(prov) -> str:
 # subprocess wrapper
 # ---------------------------------------------------------------------------
 
-def _run_cmd(cmd: list, step: str, prov, timeout: int) -> None:
+def run_cmd(cmd: list, step: str, prov, timeout: int) -> None:
 	"""Run a bench command as a subprocess. Raises ProvisioningError on failure.
 
 	Uses shell=False (list form) — credentials in cmd args cannot cause shell injection.
@@ -533,7 +640,7 @@ def _run_cmd(cmd: list, step: str, prov, timeout: int) -> None:
 			cmd,
 			capture_output=True,
 			text=True,
-			cwd=_get_bench_path(),
+			cwd=get_bench_path(),
 			env={**os.environ},
 			timeout=timeout,
 		)
@@ -552,14 +659,14 @@ def _run_cmd(cmd: list, step: str, prov, timeout: int) -> None:
 		)
 
 
-def _run_cmd_capture(cmd: list, step: str, prov, timeout: int) -> str:
+def run_cmd_capture(cmd: list, step: str, prov, timeout: int) -> str:
 	"""Like _run_cmd but returns stdout for commands whose output we need to read."""
 	try:
 		result = subprocess.run(
 			cmd,
 			capture_output=True,
 			text=True,
-			cwd=_get_bench_path(),
+			cwd=get_bench_path(),
 			env={**os.environ},
 			timeout=timeout,
 		)
@@ -582,6 +689,45 @@ def _run_cmd_capture(cmd: list, step: str, prov, timeout: int) -> str:
 # ---------------------------------------------------------------------------
 # Failure handling
 # ---------------------------------------------------------------------------
+
+def retry_failed_provisioning(provisioning_name: str, trigger: str = "manual") -> None:
+	"""Give a Failed provisioning record its attempts back and re-queue it (C1).
+
+	Safe against a half-created site: _step_create_site skips `bench new-site`
+	when the site directory already exists, so the retry resumes rather than
+	collides. Any other status is refused — this is not a general re-run button.
+	"""
+	prov = frappe.get_doc("MZ Tenant Provisioning", provisioning_name)
+	if prov.status != "Failed":
+		frappe.throw(
+			f"Só um provisionamento em estado 'Failed' pode ser repetido — "
+			f"{prov.name} está '{prov.status}'."
+		)
+	_append_log(prov, f"Nova tentativa ({trigger}): contador de tentativas reposto a 0")
+	prov.attempts = 0
+	prov.status = "Queued"
+	prov.last_error = ""
+	prov.save(ignore_permissions=True)
+	frappe.db.commit()
+
+	frappe.enqueue(
+		"ai_saas.saas.provisioning._run_provisioning",
+		queue="long",
+		timeout=PROVISION_TIMEOUT + 120,
+		job_id=f"provision-tenant-{prov.name}-retry-{frappe.utils.now_datetime().strftime('%Y%m%d%H%M%S')}",
+		enqueue_after_commit=True,
+		provisioning_name=prov.name,
+	)
+
+
+@frappe.whitelist()
+def retry_provisioning(name: str) -> str:
+	"""The "Tentar Novamente" button on MZ Tenant Provisioning — A6's one-click answer."""
+	if not frappe.has_permission("MZ Tenant Provisioning", "write", doc=name):
+		frappe.throw("Sem permissão para repetir o provisionamento.", frappe.PermissionError)
+	retry_failed_provisioning(name, trigger=f"botão, utilizador {frappe.session.user}")
+	return "queued"
+
 
 def _handle_failure(prov, error_message: str) -> None:
 	_append_log(prov, f"ERRO: {error_message}")
@@ -622,105 +768,50 @@ def _handle_failure(prov, error_message: str) -> None:
 # Email helpers
 # ---------------------------------------------------------------------------
 
-_LOGO_URL = "https://raw.githubusercontent.com/bboa3/logos/refs/heads/main/mozeconomia-logo.png"
+def _welcome_email_context(prov, reset_link: str) -> dict:
+	"""Context the delivery Email Template renders with (C2)."""
+	from ai_saas.saas.activation import get_activation_url
+
+	contract = frappe.db.get_value(
+		"Contract", prov.contract, ["is_signed", "start_date", "mz_subscription_plan"], as_dict=True
+	) or frappe._dict()
+	return {
+		"customer_name": prov.customer_name,
+		"contact_email": prov.contact_email,
+		"site_name": prov.site_name,
+		"site_url": f"https://{prov.site_name}",
+		"reset_link": reset_link,
+		"is_signed": bool(contract.get("is_signed")),
+		"trial_end": frappe.utils.formatdate(contract.get("start_date")) if contract.get("start_date") else "",
+		"plan": contract.get("mz_subscription_plan") or "",
+		"activation_url": get_activation_url(prov.contract),
+		"booking_url": get_booking_url(),
+	}
+
+
+def get_booking_url() -> str:
+	"""The Calendly link from MZ SaaS Settings (install seeds it); the shipped default
+	if someone blanks the setting — an email must never carry an empty link."""
+	from ai_saas.install import DEFAULT_BOOKING_URL
+
+	return frappe.db.get_single_value("MZ SaaS Settings", "booking_url") or DEFAULT_BOOKING_URL
+
+
+def _render_welcome_email(prov, reset_link: str) -> dict:
+	"""subject + message from the Email Template; raises if the template is missing
+	(install.ensure_email_templates creates it on install and migrate)."""
+	from ai_saas.install import WELCOME_EMAIL_TEMPLATE
+
+	template = frappe.get_doc("Email Template", WELCOME_EMAIL_TEMPLATE)
+	return template.get_formatted_email(_welcome_email_context(prov, reset_link))
 
 
 def _send_welcome_email(prov, reset_link: str) -> None:
-	url = f"https://{prov.site_name}"
-	message = f"""
-<table cellpadding="0" cellspacing="0" border="0" width="100%"
-       style="background:#F5F6F7;padding:20px 0;font-family:Arial,sans-serif;color:#1e2a38;line-height:1.5;">
-  <tr>
-    <td align="center">
-      <table cellpadding="0" cellspacing="0" border="0" width="600"
-             style="background:#FFFFFF;border-radius:8px;overflow:hidden;mso-table-lspace:0;mso-table-rspace:0;border-collapse:collapse;">
-        <tr>
-          <td style="padding:30px;font-size:14px;color:#1e2a38;">
-            <p>Prezado(a) {prov.customer_name},</p>
-            <p><strong>O seu sistema MozEconomia Cloud está activo!</strong></p>
-            <p>
-              A instância da <strong>{prov.customer_name}</strong> foi criada com sucesso e está pronta a
-              utilizar em: <a href="{url}" style="color:#008000;font-weight:bold;">{prov.site_name}</a>
-            </p>
-            <p>Para aceder ao sistema pela primeira vez, clique no botão abaixo para definir a sua senha:</p>
-            <p style="margin:24px 0;">
-              <a href="{reset_link}"
-                 style="background:#008000;color:#ffffff;padding:12px 28px;border-radius:5px;
-                        text-decoration:none;font-size:15px;font-weight:bold;display:inline-block;">
-                Definir a Minha Senha
-              </a>
-            </p>
-            <p style="font-size:12px;color:#6c757d;">
-              Se o botão não funcionar, copie e cole este link no seu browser:<br>
-              <a href="{reset_link}" style="color:#008000;">{reset_link}</a>
-            </p>
-            <p><strong>O que acontece a seguir:</strong></p>
-            <ol>
-              <li>A nossa equipa vai contactar nas próximas horas para agendar a sessão de configuração inicial</li>
-              <li>Juntos vamos configurar a sua empresa, produtos e utilizadores</li>
-              <li>A sua equipa começa a faturar, gerir stock e finanças desde o primeiro dia</li>
-            </ol>
-            <p>As suas faturas mensais chegam a este email com <strong>7 dias de prazo para pagamento</strong>.</p>
-            <p>
-              Qualquer dúvida, basta escrever para
-              <a href="mailto:cloud@mozeconomia.co.mz" style="color:#008000;">cloud@mozeconomia.co.mz</a>
-              ou falar connosco pelo WhatsApp.
-            </p>
-            <p>Com boas energias,</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:0 30px 30px 30px;">
-            <table cellpadding="0" cellspacing="0" border="0" width="100%"
-                   style="font-family:Arial,sans-serif;font-size:14px;color:#1e2a38;mso-table-lspace:0;mso-table-rspace:0;border-collapse:collapse;">
-              <tr>
-                <td style="padding:0 0 8px 0;">
-                  <img src="{_LOGO_URL}" alt="MozEconomia Cloud" width="240"
-                       style="display:block;border:0;outline:none;text-decoration:none;">
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:4px 0;">
-                  <table cellpadding="0" cellspacing="0" border="0" width="100%"
-                         style="mso-table-lspace:0;mso-table-rspace:0;border-collapse:collapse;">
-                    <tr>
-                      <td valign="top" style="font-weight:bold;width:80px;padding:2px 0;">Telefone:</td>
-                      <td style="padding:2px 0;">
-                        <a href="tel:+258874444645" style="color:#1e2a38;text-decoration:none;">+258 87 4444 645</a>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td valign="top" style="font-weight:bold;padding:2px 0;">Email:</td>
-                      <td style="padding:2px 0;">
-                        <a href="mailto:cloud@mozeconomia.co.mz" style="color:#1e2a38;text-decoration:none;">cloud@mozeconomia.co.mz</a>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td valign="top" style="font-weight:bold;padding:2px 0;">Website:</td>
-                      <td style="padding:2px 0;">
-                        <a href="https://mozeconomia.co.mz" style="color:#1e2a38;text-decoration:none;">mozeconomia.co.mz</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0 0 0;font-size:12px;color:#1e2a38;">
-                  MOZ ECONOMIA S.A. • Soluções de contabilidade e gestão empresarial.
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-"""
+	email = _render_welcome_email(prov, reset_link)
 	frappe.sendmail(
 		recipients=[prov.contact_email],
-		subject="Bem-vindo à MozEconomia Cloud — A sua conta está activa!",
-		message=message,
+		subject=email["subject"],
+		message=email["message"],
 		reference_doctype="MZ Tenant Provisioning",
 		reference_name=prov.name,
 		delayed=False,
@@ -728,22 +819,16 @@ def _send_welcome_email(prov, reset_link: str) -> None:
 
 
 def _send_failure_alert(prov, error_message: str) -> None:
-	support_email = (
-		frappe.db.get_value("User", {"name": "Administrator"}, "email")
-		or "contacto@mozeconomia.co.mz"
-	)
-	frappe.sendmail(
-		recipients=[support_email],
-		subject=f"[ALERTA] Falha no provisionamento: {prov.site_name}",
-		message=(
-			f"<p>O provisionamento automático para <strong>{prov.site_name}</strong> falhou.</p>"
-			f"<p><strong>Tentativa:</strong> {prov.attempts} de {MAX_ATTEMPTS}</p>"
-			f"<p><strong>Erro:</strong></p><pre>{error_message[:2000]}</pre>"
-			f"<p>Ver registo: MZ Tenant Provisioning / {prov.name}</p>"
-		),
+	signup = frappe.db.get_value("MZ Signup", {"contract": prov.contract}, "name")
+	notify_ops(
+		f"Falha no provisionamento: {prov.site_name}",
+		f"<p>O provisionamento automático para <strong>{prov.site_name}</strong> falhou.</p>"
+		f"<p><strong>Tentativa:</strong> {prov.attempts} de {MAX_ATTEMPTS}</p>"
+		f"<p><strong>Erro:</strong></p><pre>{frappe.utils.escape_html(error_message[:2000])}</pre>"
+		f"<p>Ver registo: MZ Tenant Provisioning / {prov.name} · Contrato {prov.contract}</p>"
+		+ (f"<p>Registo de auto-serviço: MZ Signup / {signup}</p>" if signup else ""),
 		reference_doctype="MZ Tenant Provisioning",
 		reference_name=prov.name,
-		delayed=False,
 	)
 
 
@@ -783,7 +868,7 @@ def _resolve_contact_email(contract) -> str:
 	return email
 
 
-def _validate_slug(slug: str) -> None:
+def validate_slug(slug: str) -> None:
 	if not SLUG_RE.match(slug):
 		frappe.throw(
 			f"Subdomínio inválido: '{slug}'. Use apenas letras minúsculas, números e hífens. "
@@ -816,7 +901,7 @@ def _make_company_abbr(company_name: str) -> str:
 	return abbr or "EMP"
 
 
-def _get_db_root_user() -> str:
+def get_db_root_user() -> str:
 	"""MariaDB account used to create the tenant database and its user.
 
 	Defaults to 'root', but on Debian/Ubuntu root@localhost authenticates via the
@@ -827,7 +912,7 @@ def _get_db_root_user() -> str:
 	return frappe.conf.get("db_root_user") or "root"
 
 
-def _get_db_root_password() -> str:
+def get_db_root_password() -> str:
 	password = frappe.conf.get("db_root_password")
 	if not password:
 		raise ProvisioningError(
@@ -875,6 +960,18 @@ PROVISIONING_STEPS = (
 	_step_run_setup_wizard,
 	_step_apply_system_settings,
 	_step_seed_company_profile,
+	_step_apply_scheduler_policy,
 	_step_setup_smtp,
 	_step_notify_customer,
 )
+
+
+# Backward-compatible aliases (tests and older call sites patch these names).
+_get_bench_path = get_bench_path
+_get_bench_cmd = get_bench_cmd
+_validate_slug = validate_slug
+_run_cmd = run_cmd
+_run_cmd_capture = run_cmd_capture
+_get_db_root_user = get_db_root_user
+_get_db_root_password = get_db_root_password
+_ops_alert_recipients = ops_alert_recipients

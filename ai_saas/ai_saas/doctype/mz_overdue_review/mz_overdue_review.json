@@ -5,7 +5,7 @@
 	"doctype": "DocType",
 	"editable_grid": 1,
 	"engine": "InnoDB",
-	"field_order": ["customer", "contract", "outstanding_amount", "overdue_since", "review_status", "assigned_to", "notes"],
+	"field_order": ["customer", "contract", "outstanding_amount", "overdue_since", "review_status", "new_trial_end_date", "assigned_to", "notes"],
 	"fields": [
 		{
 			"fieldname": "customer",
@@ -42,6 +42,13 @@
 			"default": "Pending Review",
 			"reqd": 1,
 			"in_list_view": 1
+		},
+		{
+			"fieldname": "new_trial_end_date",
+			"fieldtype": "Date",
+			"label": "Nova Data de Fim do Trial",
+			"depends_on": "eval:doc.review_status=='Reactivate'",
+			"description": "Obrigatória ao reactivar um trial não assinado — sem uma nova data, o motor voltava a suspendê-lo na manhã seguinte."
 		},
 		{
 			"fieldname": "assigned_to",

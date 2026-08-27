@@ -1,0 +1,27 @@
+<div style="font-family:Arial,Helvetica,sans-serif;color:#020202;max-width:900px">
+<p><strong>Relatório diário de utilização dos trials — {{ frappe.utils.formatdate(date) }}</strong></p>
+<p>{{ rows|length }} trial(s) em curso · {{ counts.Engaged }} quente(s) · {{ counts.Cooling }} a arrefecer · {{ counts.Cold }} frio(s).</p>
+<table cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;width:100%">
+<thead><tr style="background:#f3f4f6;text-align:left">
+<th>Empresa</th><th>Termina em</th><th>Dias</th><th>Facturas</th><th>Dias c/ fact. (7d)</th><th>Utiliz. activos (7d)</th><th>Dados próprios</th><th>Outros docs (30d)</th><th>Último login</th><th>Pontos</th><th>Sinal</th><th>Responsável</th>
+</tr></thead>
+<tbody>
+{% for r in rows %}
+<tr style="border-bottom:1px solid #e5e7eb{% if r.signal == 'Engaged' %};background:#f0fdf4{% elif r.signal %};background:#fff7ed{% endif %}">
+<td>{% if r.opportunity %}<a href="{{ frappe.utils.get_url_to_form('Opportunity', r.opportunity) }}">{{ r.party_name }}</a>{% else %}{{ r.party_name }}{% endif %}<br><span style="color:#5a6270;font-size:11px">{{ r.site_name }}</span></td>
+<td>{{ frappe.utils.formatdate(r.start_date) }}</td>
+<td>{{ r.days_left }}</td>
+{% if r.probe_ok %}
+<td>{{ r.invoice_count }}</td><td>{{ r.invoice_days_7d }}</td><td>{{ r.active_users_7d }}</td><td>{{ r.master_data_count }}</td><td>{{ r.other_docs_30d }}</td>
+<td>{{ frappe.utils.formatdate(r.last_login) if r.last_login else "nunca" }}</td>
+<td><strong>{{ r.engagement_score }}</strong></td>
+<td>{{ labels.get(r.signal or "", "—") }}</td>
+{% else %}
+<td colspan="8" style="color:#b91c1c">Sem leitura: {{ (r.error or "")[:120] }}</td>
+{% endif %}
+<td>{{ r.assignee or "—" }}</td>
+</tr>
+{% endfor %}
+</tbody></table>
+<p style="font-size:12px;color:#5a6270">Quente = pontuação ≥ 3 (facturação habitual + utilizadores/dados próprios/outros documentos). A arrefecer = esteve activo, sem login há 7+ dias. Frio = passou meio trial sem facturas nem dados próprios. Os sinais criam um ToDo na Oportunidade e avisam o responsável por email.</p>
+</div>

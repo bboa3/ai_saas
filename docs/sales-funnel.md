@@ -1,5 +1,7 @@
 # Sales Funnel Restructure
 
+> **Implementation plan:** `sales-funnel-implementation.md` — the itemized, code-verified execution counterpart of this document. This file remains the business rationale.
+
 > **Prerequisite:** `../../erpnext_mz/docs/improvements.md` — specifically Part B1, "Company creation". This plan assumes a provisioned site arrives fully configured and able to invoice. Without that, self-service signup only moves the barrier instead of removing it.
 
 ## 1. Why this exists
@@ -31,6 +33,7 @@ The eight problems this addresses, and what resolves each:
 ```
 External landing page (single form, multi-step, resumable, plan selected here)
    |- guest API  ->  signup record
+            v lead multi-days email nuturing if form not submited
             v submission
       Lead + Customer + Contract SUBMITTED BUT UNSIGNED
       (plan · subdomain · contract start date)
@@ -86,7 +89,7 @@ Bench at `/srv/frappe/frappe-bench`, control site `erp.local`, app `apps/ai_saas
 | `MZ Overdue Review` | The dunning review queue. Has Suspend/Reactivate/Deactivate states that **do nothing** |
 | `Subscription` (ERPNext) | Created on signature; this is what bills |
 | `Lead Onboarding` + Web Form `lead-onboarding-form` | The second form, to be retired |
-| `Appointment` + `Appointment Booking Settings` (ERPNext) | Native scheduling, currently unused — replaces the Calendly link |
+| `Appointment` + `Appointment Booking Settings` (ERPNext) | Not used — decision 2026-08-27: calls stay on Calendly (simpler, already works); the link is a setting |
 
 **Named things this plan changes or deletes:** the notifications `AI SaaS - Lead Nurture - Dia 0/3/5/10/15/20/30` (the "7 nurture emails"), the notification `AI SaaS - Aviso de Desativação` (today it fires 8 days after the due date, when real deactivation moves to day 33), and the Calendly link embedded in the body of `AI SaaS - Lead Nurture - Dia 10`.
 

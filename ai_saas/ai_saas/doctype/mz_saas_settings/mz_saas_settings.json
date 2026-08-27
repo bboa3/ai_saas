@@ -1,0 +1,172 @@
+{
+ "actions": [],
+ "creation": "2026-08-24 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "issingle": 1,
+ "field_order": [
+  "section_trial",
+  "trial_length_days",
+  "commercial_customer_group",
+  "scheduler_plans",
+  "section_lifecycle",
+  "auto_suspend",
+  "auto_archive",
+  "overdue_days_to_suspend",
+  "grace_days_to_archive",
+  "section_billing",
+  "prebilling_reminder_days",
+  "overdue_followup_days",
+  "section_alerts",
+  "ops_alert_recipients",
+  "default_sales_user",
+  "usage_report_recipients",
+  "booking_url",
+  "section_ceilings",
+  "max_concurrent_trials",
+  "max_signups_per_day"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_trial",
+   "fieldtype": "Section Break",
+   "label": "Período Experimental"
+  },
+  {
+   "fieldname": "trial_length_days",
+   "fieldtype": "Int",
+   "label": "Duração do Trial (dias)",
+   "default": "14"
+  },
+  {
+   "fieldname": "commercial_customer_group",
+   "fieldtype": "Link",
+   "label": "Grupo de Clientes após Activação",
+   "options": "Customer Group",
+   "description": "Na assinatura, o cliente sai de 'Cloud - Trial' para este grupo."
+  },
+  {
+   "fieldname": "scheduler_plans",
+   "fieldtype": "Table MultiSelect",
+   "label": "Planos com Agendador no Site",
+   "options": "MZ Scheduler Plan",
+   "description": "Os sites dos clientes nestes planos têm tarefas agendadas (bench enable-scheduler); todos os outros ficam sem agendador. Aplicado no provisionamento e reaplicado na assinatura."
+  },
+  {
+   "fieldname": "section_lifecycle",
+   "fieldtype": "Section Break",
+   "label": "Suspensão Automática de site"
+  },
+  {
+   "fieldname": "auto_suspend",
+   "fieldtype": "Check",
+   "label": "Suspender automaticamente",
+   "default": "0",
+   "description": "Bloquear o acesso ao site do cliente"
+  },
+  {
+   "fieldname": "auto_archive",
+   "fieldtype": "Check",
+   "label": "Arquivar automaticamente",
+   "default": "0",
+   "description": "Arquivar = backup completo e destruição do site."
+  },
+  {
+   "fieldname": "overdue_days_to_suspend",
+   "fieldtype": "Int",
+   "label": "Dias em Atraso até Suspensão",
+   "default": "33"
+  },
+  {
+   "fieldname": "grace_days_to_archive",
+   "fieldtype": "Int",
+   "label": "Dias de Graça até Arquivo",
+   "default": "30"
+  },
+  {
+   "fieldname": "section_billing",
+   "fieldtype": "Section Break",
+   "label": "Facturação"
+  },
+  {
+   "fieldname": "prebilling_reminder_days",
+   "fieldtype": "Int",
+   "label": "Aviso Pré-Facturação (dias antes)",
+   "default": "4"
+  },
+  {
+   "fieldname": "overdue_followup_days",
+   "fieldtype": "Int",
+   "label": "Follow-up Comercial (dias de atraso)",
+   "default": "7"
+  },
+  {
+   "fieldname": "section_alerts",
+   "fieldtype": "Section Break",
+   "label": "Alertas Internos"
+  },
+  {
+   "fieldname": "ops_alert_recipients",
+   "fieldtype": "Small Text",
+   "label": "Destinatários de Alertas (emails, separados por vírgula)",
+   "description": "Recebem falhas de provisionamento, alertas de duplicados e o digest diário do motor."
+  },
+  {
+   "fieldname": "default_sales_user",
+   "fieldtype": "Link",
+   "label": "Comercial por Omissão",
+   "options": "User",
+   "description": "Recebe os ToDos de lead quente/frio quando a Oportunidade não tem responsável."
+  },
+  {
+   "fieldname": "usage_report_recipients",
+   "fieldtype": "Small Text",
+   "label": "Destinatários do Relatório de Utilização (emails, separados por vírgula)",
+   "description": "Recebem o relatório diário de utilização dos trials. Vazio: o Comercial por Omissão; se também vazio, os Destinatários de Alertas."
+  },
+  {
+   "fieldname": "booking_url",
+   "fieldtype": "Data",
+   "label": "Link de Marcação de Chamada",
+   "description": "Link externo (Calendly) usado em todos os emails que convidam o cliente a marcar uma chamada."
+  },
+  {
+   "fieldname": "section_ceilings",
+   "fieldtype": "Section Break",
+   "label": "Limites de Auto-Serviço"
+  },
+  {
+   "fieldname": "max_concurrent_trials",
+   "fieldtype": "Int",
+   "label": "Máximo de Trials Simultâneos",
+   "default": "20"
+  },
+  {
+   "fieldname": "max_signups_per_day",
+   "fieldtype": "Int",
+   "label": "Máximo de Registos por Dia",
+   "default": "10"
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-24 00:00:00",
+ "modified_by": "Administrator",
+ "module": "AI SaaS",
+ "name": "MZ SaaS Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -1,0 +1,214 @@
+{
+ "actions": [],
+ "autoname": "MZ-USAGE-.YYYY.-.#####",
+ "creation": "2026-08-24 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "contract",
+  "site_name",
+  "snapshot_date",
+  "column_break_1",
+  "invoice_count",
+  "first_invoice_date",
+  "user_count",
+  "last_login",
+  "section_momentum",
+  "invoice_days_7d",
+  "invoice_days_prev_7d",
+  "invoice_count_30d",
+  "column_break_2",
+  "active_users_7d",
+  "master_data_count",
+  "other_docs_30d",
+  "section_score",
+  "engagement_score",
+  "signal",
+  "section_probe",
+  "probe_ok",
+  "error"
+ ],
+ "fields": [
+  {
+   "fieldname": "contract",
+   "fieldtype": "Link",
+   "label": "Contrato",
+   "options": "Contract",
+   "reqd": 1,
+   "search_index": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "site_name",
+   "fieldtype": "Data",
+   "label": "Site",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "snapshot_date",
+   "fieldtype": "Date",
+   "label": "Data",
+   "reqd": 1,
+   "search_index": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "invoice_count",
+   "fieldtype": "Int",
+   "label": "Facturas Emitidas",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "first_invoice_date",
+   "fieldtype": "Date",
+   "label": "Primeira Factura"
+  },
+  {
+   "fieldname": "user_count",
+   "fieldtype": "Int",
+   "label": "Utilizadores Activos"
+  },
+  {
+   "fieldname": "last_login",
+   "fieldtype": "Datetime",
+   "label": "Último Login",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_momentum",
+   "fieldtype": "Section Break",
+   "label": "Momento"
+  },
+  {
+   "fieldname": "invoice_days_7d",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Dias com facturas (7d)",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "invoice_days_prev_7d",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Dias com facturas (7d anteriores)"
+  },
+  {
+   "fieldname": "invoice_count_30d",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Facturas (30d)"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "active_users_7d",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Utilizadores activos (7d)"
+  },
+  {
+   "fieldname": "master_data_count",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Clientes/Artigos/Fornecedores próprios"
+  },
+  {
+   "fieldname": "other_docs_30d",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Outros documentos (30d)"
+  },
+  {
+   "fieldname": "section_score",
+   "fieldtype": "Section Break",
+   "label": "Sinal"
+  },
+  {
+   "fieldname": "engagement_score",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Pontuação de envolvimento",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "signal",
+   "fieldtype": "Data",
+   "read_only": 1,
+   "label": "Sinal",
+   "description": "Engaged / Cooling / Cold / vazio — o que evaluate_signals concluiu neste dia.",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_probe",
+   "fieldtype": "Section Break",
+   "label": "Sonda"
+  },
+  {
+   "fieldname": "probe_ok",
+   "fieldtype": "Check",
+   "label": "Leitura OK",
+   "default": "0"
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Erro",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-24 00:00:00",
+ "modified_by": "Administrator",
+ "module": "AI SaaS",
+ "name": "MZ Tenant Usage Snapshot",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 0,
+   "write": 0
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "share": 0,
+   "write": 0
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

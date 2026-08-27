@@ -1,9 +1,14 @@
 """
-Functions called via `bench --site <new-site> execute ai_saas.saas.site_helpers.<fn>`.
+Functions called via `bench --site <new-site> execute` inside a tenant site.
 
-These run inside the new site's Frappe context so they can use Frappe utilities
-(generate_hash, get_url, db operations) without any cross-site concerns.
-bench execute commits after the function returns, so no explicit commit is needed.
+They run in that site's Frappe context, so they can use Frappe utilities
+(generate_hash, get_url, db operations) without any cross-site concerns; bench
+execute commits after the function returns, so no explicit commit is needed.
+
+Because ai_saas is *not* installed on tenant sites, provisioning reaches this
+module through an `__import__(...)` expression (provisioning.py) rather than by
+method name. Code that a tenant should own belongs in erpnext_mz instead — the
+usage probe lives there, in erpnext_mz.utils.tenant_usage.
 """
 import frappe
 

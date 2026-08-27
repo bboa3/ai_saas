@@ -1,0 +1,128 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block head_include %}
+<link rel="stylesheet" href="/registo/index.css?v={{ asset_version or 0 }}">
+{% endblock %}
+
+{% block script %}
+<script>
+  window.MZ_SIGNUP = {
+    token: {{ (token or "") | tojson }},
+    resume: {{ (resume or none) | tojson }},
+    preselectedPlan: {{ (preselected_plan or "") | tojson }},
+    trialDays: {{ (trial_days or 14) | tojson }},
+    assetVersion: {{ (asset_version or 0) | tojson }}
+  };
+</script>
+<script src="/registo/index.js?v={{ asset_version or 0 }}"></script>
+{% endblock %}
+
+{% block page_content %}
+<div class="reg">
+  <img class="reg__logo" src="/assets/erpnext_mz/images/logo.svg" alt="MozEconomia Cloud">
+
+  <div class="reg__progress" id="reg-progress">
+    <span class="reg__progress-text" id="reg-progress-text">Passo 1 de 3</span>
+    <div class="reg__bar"><div class="reg__bar-fill" id="reg-bar"></div></div>
+  </div>
+
+  <!-- Step 1 · Contact -->
+  <section class="reg__step" data-step="1">
+    <h1 tabindex="-1">Crie a sua conta</h1>
+    <p class="reg__lead">{{ trial_days }} dias para experimentar, gratuitamente. Começamos pelo essencial.</p>
+    <label for="full_name">O seu nome</label>
+    <input id="full_name" name="full_name" type="text" autocomplete="name" required>
+    <div class="reg__err" role="alert" aria-live="polite" data-for="full_name"></div>
+    <label for="email">Email de trabalho</label>
+    <input id="email" name="email" type="email" autocomplete="email" inputmode="email" required>
+    <div class="reg__err" role="alert" aria-live="polite" data-for="email"></div>
+    <label for="phone">WhatsApp / telefone</label>
+    <input id="phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+258 8x xxx xxxx">
+    <div class="reg__err" role="alert" aria-live="polite" data-for="phone"></div>
+    <button type="button" class="reg__btn" data-next="1">Continuar</button>
+    <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
+  </section>
+
+  <!-- Step 2 · Company -->
+  <section class="reg__step" data-step="2" hidden>
+    <h1 tabindex="-1">Sobre a sua empresa</h1>
+    <p class="reg__lead">Quase lá. Com estes dados, a sua conta nasce pronta a facturar em nome da sua empresa.</p>
+    <label for="company_name">Nome da empresa</label>
+    <input id="company_name" name="company_name" type="text" autocomplete="organization" required>
+    <div class="reg__err" role="alert" aria-live="polite" data-for="company_name"></div>
+    <label for="tax_id">NUIT</label>
+    <input id="tax_id" name="tax_id" type="text" inputmode="numeric" maxlength="9" placeholder="9 dígitos" required>
+    <div class="reg__err" role="alert" aria-live="polite" data-for="tax_id"></div>
+    <label for="tax_regime">Regime de IVA</label>
+    <select id="tax_regime" name="tax_regime">
+      {% for r in tax_regimes %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+    </select>
+    <label for="industry">Sector de actividade</label>
+    <select id="industry" name="industry">
+      <option value="">Escolha…</option>
+      {% for i in industries %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+    </select>
+    <div class="reg__err" role="alert" aria-live="polite" data-for="industry"></div>
+    <label for="address">Endereço da empresa</label>
+    <input id="address" name="address" type="text" autocomplete="street-address" placeholder="Av. 25 de Setembro, 1234, Bairro Central, Maputo">
+    <div class="reg__err" role="alert" aria-live="polite" data-for="address"></div>
+    <div id="city-row" hidden>
+      <label for="city">Cidade</label>
+      <input id="city" name="city" type="text" list="mz-cities" autocomplete="address-level2" placeholder="Ex.: Maputo">
+      <datalist id="mz-cities">{% for c in cities %}<option value="{{ c }}"></option>{% endfor %}</datalist>
+      <div class="reg__err" role="alert" aria-live="polite" data-for="city"></div>
+    </div>
+    <div class="reg__row">
+      <button type="button" class="reg__btn reg__btn--ghost" data-back="2">Voltar</button>
+      <button type="button" class="reg__btn" data-next="2">Continuar</button>
+    </div>
+    <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
+  </section>
+
+  <!-- Step 3 · Account -->
+  <section class="reg__step" data-step="3" hidden>
+    <h1 tabindex="-1">Plano e endereço</h1>
+    <p class="reg__lead">Só paga depois de activar — nunca antes do fim do período experimental.</p>
+    <label for="subdomain">Subdomínio da sua conta</label>
+    <div class="reg__subdomain">
+      <input id="subdomain" name="subdomain" type="text" inputmode="url" autocapitalize="none" spellcheck="false" placeholder="sua-empresa">
+      <span class="reg__suffix">.erp.mozeconomia.co.mz</span>
+    </div>
+    <div class="reg__err" role="alert" aria-live="polite" data-for="subdomain"></div>
+    <div class="reg__domain" id="reg-domain-preview" aria-live="polite">Vai entrar em <span id="reg-domain-url">https://sua-empresa.erp.mozeconomia.co.mz</span></div>
+    <div class="reg__ok" id="reg-subdomain-ok" hidden>Disponível ✓</div>
+        <label>Plano</label>
+        <div class="reg__plan-pill" id="reg-plan-pill">
+          <span id="reg-plan-label"></span>
+          <button type="button" class="reg__link" id="reg-plan-change" aria-expanded="false"
+            aria-controls="reg-plan-choices">alterar</button>
+        </div>
+        <div class="reg__plan-choices" id="reg-plan-choices" role="radiogroup" aria-label="Plano" hidden>
+          {% for p in plans %}
+          <label class="reg__choice"><input type="radio" name="plan" value="{{ p.name }}"> {{ p.plan_name or p.name }}
+            <span class="reg__price">{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{
+              "mês" if p.billing_interval == "Month" else "ano" }}</span></label>
+          {% endfor %}
+        </div>
+    <label class="reg__check"><input type="checkbox" id="terms_accepted"> Li e aceito os <a href="/termos" target="_blank" rel="noopener">termos de serviço</a> e a <a href="https://mozeconomia.co.mz/politica-de-privacidade" target="_blank" rel="noopener">política de privacidade</a>.</label>
+    <div class="reg__err" role="alert" aria-live="polite" data-for="terms_accepted"></div>
+    <div class="reg__row">
+      <button type="button" class="reg__btn reg__btn--ghost" data-back="3">Voltar</button>
+      <button type="button" class="reg__btn" id="reg-submit">Criar a minha conta</button>
+    </div>
+    <div class="reg__err reg__err--global" id="reg-global-err" role="alert" aria-live="polite"></div>
+    <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
+  </section>
+
+  <!-- Progress / terminal states -->
+  <section class="reg__step reg__done" data-step="progress" hidden>
+    <div class="reg__spinner" id="reg-spinner"></div>
+    <h1 id="reg-done-title">A criar a sua conta…</h1>
+    <p class="reg__lead" id="reg-done-text">Estamos a preparar o seu servidor. Isto demora normalmente 5 a 15 minutos — pode fechar esta página: o email de entrega chega com o acesso.</p>
+    <a class="reg__btn reg__btn--link" id="reg-done-link" hidden>Entrar na minha conta</a>
+    <button type="button" class="reg__link" id="reg-restart" style="margin-top:12px" hidden>Começar um novo registo</button>
+  </section>
+</div>
+{% endblock %}

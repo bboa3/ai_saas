@@ -1,0 +1,10 @@
+{% extends "templates/web.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_content %}
+<div style="max-width:640px;margin:32px auto 64px;padding:0 16px;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;color:#020202;line-height:1.55">
+  <img src="/assets/erpnext_mz/images/logo.svg" alt="MozEconomia Cloud" style="height:36px;margin-bottom:24px">
+  <h1 style="font-size:24px;margin:0 0 12px">Termos de Serviço</h1>
+  <p style="color:#5a6270">Este é o texto do contrato que assina ao activar a sua conta. Na activação, os campos entre parêntesis rectos são preenchidos com os seus dados.</p>
+  <div style="background:#FAFBFC;border:1px solid #EEF1F5;border-radius:12px;padding:20px">{{ terms }}</div>
+</div>
+{% endblock %}

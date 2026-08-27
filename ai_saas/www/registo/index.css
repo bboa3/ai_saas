@@ -1,0 +1,353 @@
+/* The website navbar and footer have nothing to do with the lead: hidden, as on erpnext_mz/www/qr_validation. */
+.navbar,
+.web-header,
+footer.web-footer,
+.footer,
+.page-header {
+  display: none !important;
+}
+
+main.page_content {
+  padding: 0 !important;
+}
+
+@font-face {
+  font-family: "Gotham";
+  font-weight: 700;
+  font-display: swap;
+  src: url("/assets/erpnext_mz/fonts/Gotham/GOTHAM-BOLD.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Gotham";
+  font-weight: 400;
+  font-display: swap;
+  src: url("/assets/erpnext_mz/fonts/Gotham/GOTHAM-BOOK.woff2") format("woff2");
+}
+
+.reg {
+  font-family: Gotham, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #020202;
+  max-width: 480px;
+  margin: 24px auto 64px;
+  padding: 0 16px;
+}
+
+.reg__logo {
+  display: block;
+  height: 34px;
+  margin-bottom: 20px;
+}
+
+.reg__progress {
+  margin-bottom: 22px;
+}
+
+.reg__progress-text {
+  font-size: 13px;
+  color: #5a6270;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.reg__bar {
+  height: 6px;
+  background: #E9F7F6;
+  border-radius: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.reg__bar-fill {
+  height: 100%;
+  width: 33%;
+  background: #02664D;
+  border-radius: 6px;
+  transition: width .3s ease;
+}
+
+.reg h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.reg__lead {
+  color: #5a6270;
+  margin: 0 0 18px;
+  font-size: 15px;
+}
+
+.reg label {
+  display: block;
+  font-weight: 700;
+  font-size: 13px;
+  margin: 14px 0 6px;
+}
+
+.reg input,
+.reg select {
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid #d7dce3;
+  border-radius: 8px;
+  font-size: 16px;
+  background: #fff;
+}
+
+.reg input:focus,
+.reg select:focus {
+  outline: none;
+  border-color: #02664D;
+  box-shadow: 0 0 0 3px #E9F7F6;
+}
+
+.reg input.is-invalid {
+  border-color: #b42318;
+}
+
+.reg input.is-valid {
+  border-color: #1f8f5f;
+}
+
+.reg__err {
+  color: #b42318;
+  font-size: 13px;
+  margin-top: 6px;
+  min-height: 0;
+  display: none;
+}
+
+.reg__err.show {
+  display: block;
+}
+
+.reg__err--global {
+  margin-top: 12px;
+}
+
+.reg__ok {
+  color: #1f8f5f;
+  font-size: 13px;
+  margin-top: 6px;
+  font-weight: 700;
+}
+
+.reg__btn {
+  display: block;
+  width: 100%;
+  margin-top: 20px;
+  padding: 15px;
+  font-size: 16px;
+  font-weight: 700;
+  border: 0;
+  border-radius: 150px;
+  background: oklch(0.828 0.189 84.429);
+  color: #020202;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+}
+
+.reg__btn[disabled] {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.reg__btn--ghost {
+  background: #fff;
+  color: #020202;
+  border: 1px solid #d7dce3;
+}
+
+.reg__btn--link {
+  display: inline-block;
+  width: auto;
+  padding: 12px 22px;
+}
+
+.reg__row {
+  display: flex;
+  gap: 10px;
+}
+
+.reg__row .reg__btn {
+  margin-top: 20px;
+}
+
+.reg__row .reg__btn--ghost {
+  flex: 0 0 34%;
+}
+
+.reg__note {
+  font-size: 12.5px;
+  color: #5a6270;
+  margin-top: 14px;
+  text-align: center;
+}
+
+.reg__plan-pill {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  border: 1px solid #02664D;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.reg__link {
+  background: none;
+  border: 0;
+  color: #020202;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+}
+
+.reg__plan-choices {
+  margin: 0 0 4px;
+}
+
+.reg__choice:has(input:checked) {
+  border-color: #020202;
+  box-shadow: 0 0 0 1px #020202 inset;
+}
+
+.reg__choice {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #d7dce3;
+  border-radius: 8px;
+  margin: 6px 0;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.reg__choice input {
+  width: auto;
+  margin-right: 8px;
+}
+
+.reg__price {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.reg__subdomain {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reg__subdomain input {
+  flex: 1;
+  min-width: 0;
+}
+
+.reg__suffix {
+  font-size: 13px;
+  color: #5a6270;
+  white-space: nowrap;
+}
+
+.reg__summary {
+  background: #FAFBFC;
+  border: 1px solid #EEF1F5;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 18px;
+  font-size: 14px;
+}
+
+.reg__summary div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.reg__summary span {
+  color: #5a6270;
+}
+
+.reg__check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-weight: 400;
+  font-size: 14px;
+  margin-top: 16px;
+}
+
+.reg__check input {
+  width: auto;
+  margin-top: 3px;
+}
+
+.reg__done {
+  text-align: center;
+  padding-top: 24px;
+}
+
+.reg__spinner {
+  width: 42px;
+  height: 42px;
+  border: 4px solid #E9F7F6;
+  border-top-color: #02664D;
+  border-radius: 50%;
+  margin: 0 auto 18px;
+  animation: reg-spin 1s linear infinite;
+}
+
+.reg__spinner[hidden] {
+  display: none;
+}
+
+@keyframes reg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 420px) {
+  .reg h1 {
+    font-size: 22px;
+  }
+
+  .reg input,
+  .reg select {
+    padding: 11px 12px;
+  }
+}
+
+/* Plan cards and the pill read as options, not as headings: never bold — the price must not look expensive. */
+.reg .reg__choice,
+.reg .reg__choice .reg__price,
+.reg .reg__plan-pill,
+.reg .reg__plan-pill span {
+  font-weight: 400;
+}
+
+.reg .reg__check {
+  font-weight: 400;
+}
+
+.reg__domain {
+  font-size: .85rem;
+  color: #5a6270;
+  margin-top: 8px;
+  word-break: break-all;
+}
+
+.reg__domain span {
+  font-weight: 700;
+  color: #02664D;
+}

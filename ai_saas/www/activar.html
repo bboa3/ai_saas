@@ -1,0 +1,142 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block head_include %}
+<!-- One design for the whole funnel: /registo's stylesheet is the source, so the page
+     the customer signs on looks like the page they signed up on. -->
+<link rel="stylesheet" href="/registo/index.css?v={{ asset_version or 0 }}">
+<style>
+  .reg__section { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: #5a6270; margin: 26px 0 2px; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div class="reg">
+  <img class="reg__logo" src="/assets/erpnext_mz/images/logo.svg" alt="MozEconomia Cloud">
+
+  {% if not valid %}
+    <h1>Ligação inválida</h1>
+    <p class="reg__lead">Esta ligação de activação não é válida ou já expirou. Utilize a ligação do email
+      mais recente, ou fale connosco: <a href="mailto:cloud@mozeconomia.co.mz">cloud@mozeconomia.co.mz</a>.</p>
+
+  {% elif already_signed %}
+    <div class="reg__done">
+      <h1>A sua conta já está activa</h1>
+      <p class="reg__lead">Não há mais nada a fazer — o contrato {{ contract.name }} já foi assinado.</p>
+      {% if site_url %}<a class="reg__btn reg__btn--link" href="{{ site_url }}">Entrar na minha conta</a>{% endif %}
+    </div>
+
+  {% else %}
+    <div id="act-intro">
+      <h1 style="margin-top: 40px;">Active e continue de onde parou</h1>
+      <p class="reg__lead">Tudo o que a {{ customer.customer_name or "sua empresa" }} registou mantém-se
+        como está. Após a confirmação, a conta passa a definitiva e continua a trabalhar sem interrupção.</p>
+    </div>
+
+    <div id="act-form">
+      <p class="reg__section">Seu Plano</p>
+      <div class="reg__plan-pill" id="act-plan-pill">
+        <span id="act-plan-label"></span>
+        <button type="button" class="reg__link" id="act-plan-change" aria-expanded="false"
+          aria-controls="act-plan-choices">alterar</button>
+      </div>
+      <div class="reg__plan-choices" id="act-plan-choices" role="radiogroup" aria-label="Plano" hidden>
+        {% for p in plans %}
+        <label class="reg__choice">
+          <span><input type="radio" name="plan" value="{{ p.name }}"
+            data-label="{{ p.plan_name or p.name }}"
+            data-price="{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ "mês" if p.billing_interval == "Month" else "ano" }}"
+            {% if p.name == contract.mz_subscription_plan %}checked{% endif %}> {{ p.plan_name or p.name }}</span>
+          <span class="reg__price">{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ "mês" if p.billing_interval == "Month" else "ano" }}</span>
+        </label>
+        {% endfor %}
+      </div>
+
+      <button class="reg__btn" id="btn-activate">Assinar e activar a minha conta</button>
+      <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
+    </div>
+
+    <div class="reg__done" id="act-done" hidden>
+      <h1>Conta activada</h1>
+      <p class="reg__lead">Obrigado. O contrato foi assinado e a subscrição criada.
+        <span id="act-billing"></span></p>
+      {% if site_url %}<a class="reg__btn reg__btn--link" href="{{ site_url }}">Entrar na minha conta</a>{% endif %}
+    </div>
+  {% endif %}
+</div>
+
+{% if valid and not already_signed %}
+<script>
+(function () {
+  var btn = document.getElementById("btn-activate");
+  if (!btn) return;
+  var choices = document.getElementById("act-plan-choices");
+  var $ = function (id) { return document.getElementById(id); };
+
+  // The error line is created if the page does not carry one, so editing the template
+  // can never leave a failed activation silent.
+  function errBox() {
+    var e = $("act-err");
+    if (!e) {
+      e = document.createElement("div");
+      e.id = "act-err";
+      e.className = "reg__err reg__err--global";
+      e.setAttribute("role", "alert");
+      e.setAttribute("aria-live", "polite");
+      btn.parentNode.insertBefore(e, btn.nextSibling);
+    }
+    return e;
+  }
+
+  // The plan reads as a decision already made — one line, changed only if the customer asks.
+  function paintPlan() {
+    var r = document.querySelector("#act-plan-choices input:checked");
+    $("act-plan-label").textContent = r ? r.dataset.label + " " + r.dataset.price : "—";
+  }
+  paintPlan();
+  function openChoices(open) {
+    choices.hidden = !open;
+    var link = $("act-plan-change");
+    link.setAttribute("aria-expanded", String(open));
+    link.textContent = open ? "fechar" : "alterar";
+  }
+  $("act-plan-change").addEventListener("click", function () { openChoices(choices.hidden); });
+  // Picking a plan is the end of the question: the list closes on the choice, as on /registo.
+  choices.addEventListener("change", function () { paintPlan(); openChoices(false); });
+
+  btn.addEventListener("click", function () {
+    btn.disabled = true; errBox().classList.remove("show");
+    var label = btn.textContent; btn.textContent = "A activar…";
+    var plan = document.querySelector("#act-plan-choices input:checked");
+    frappe.call({
+      method: "ai_saas.saas.activation.activate",
+      type: "POST",
+      args: {
+        contract: {{ contract.name | tojson }},
+        token: {{ token | tojson }},
+        plan: plan ? plan.value : null,
+        accept_terms: 1
+      },
+      callback: function (r) {
+        var m = r.message || {};
+        $("act-intro").hidden = true;          // the invitation is over once it is done
+        $("act-form").hidden = true;
+        $("act-done").hidden = false;
+        var when = m.billing_start_display || m.billing_start;
+        if (when) $("act-billing").textContent = "A primeira factura é emitida em " + when + ".";
+        window.scrollTo(0, 0);
+      },
+      error: function (r) {
+        btn.disabled = false; btn.textContent = label;
+        var msg = "Não foi possível activar. Tente novamente ou fale connosco.";
+        try { if (r && r._server_messages) msg = JSON.parse(JSON.parse(r._server_messages)[0]).message; } catch (e) {}
+        var e = errBox(); e.textContent = msg; e.classList.add("show");
+      }
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

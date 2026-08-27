@@ -11,16 +11,13 @@ required_apps = ["erpnext", "erpnext_mz"]
 after_install = "ai_saas.install.after_install"
 before_migrate = "ai_saas.install.before_migrate"
 after_migrate = "ai_saas.install.after_migrate"
+before_tests = "ai_saas.tests.helpers.before_tests"
 
 doc_events = {
 	"Contract": {
-		"on_submit": "ai_saas.saas.contract_lifecycle.on_contract_signed",
+		"on_submit": "ai_saas.saas.contract_lifecycle.on_contract_submitted",
 		"on_update_after_submit": "ai_saas.saas.contract_lifecycle.on_contract_signed",
 		"on_cancel": "ai_saas.saas.contract_lifecycle.on_contract_cancel",
-	},
-	"Lead Onboarding": {
-		"after_insert": "ai_saas.saas.lead_onboarding.on_lead_onboarding_save",
-		"on_update": "ai_saas.saas.lead_onboarding.on_lead_onboarding_save",
 	},
 	"MZ Customer Feedback": {
 		"after_insert": "ai_saas.saas.feedback.on_feedback_submit",
@@ -37,6 +34,8 @@ doc_events = {
 scheduler_events = {
 	"daily": [
 		"ai_saas.saas.billing_monitor.flag_overdue_customers",
+		"ai_saas.saas.tenant_lifecycle.process_lifecycle",
+		"ai_saas.saas.usage_signals.collect_usage_snapshots",
 		"ai_saas.multipay.tasks.sync_pending_payments",
 	],
 	"hourly": [
@@ -44,11 +43,14 @@ scheduler_events = {
 	],
 }
 
+# Helpers available to Email Templates and Notifications (get_activation_url).
+jinja = {"methods": "ai_saas.utils.jinja"}
+
 fixtures = [
-	{"dt": "Custom Field", "filters": [["dt", "in", ["Contract"]], ["module", "=", "AI SaaS"]]},
+	{"dt": "Custom Field", "filters": [["dt", "in", ["Contract", "Lead", "Subscription Plan"]], ["module", "=", "AI SaaS"]]},
+	{"dt": "Property Setter", "filters": [["name", "in", ["Contract-start_date-reqd"]]]},
 	{"dt": "Notification", "filters": [["name", "like", "AI SaaS%"]]},
-	{"dt": "Client Script", "filters": [["name", "like", "AI SaaS%"]]},
-	{"dt": "Web Form", "filters": [["name", "in", ["lead-onboarding-form", "cloud-feedback"]]]},
+	{"dt": "Web Form", "filters": [["name", "in", ["cloud-feedback"]]]},
 	{"dt": "Segment Intelligence Map"},
 	{"dt": "AI N8N Configuration"},
 ]

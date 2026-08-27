@@ -1,3 +1,4 @@
+import json
 import frappe
 
 
@@ -18,6 +19,16 @@ def after_install():
 	_remove_stale_fields()
 	_sync_custom_fields()
 	_sync_property_setters()
+	backfill_billing_start()
+	backfill_contact_mobile()
+	backfill_customer_primaries()
+	ensure_contract_template()
+	ensure_email_templates()
+	ensure_booking_url()
+	ensure_trial_customer_group()
+	ensure_cloud_plan_flags()
+	ensure_scheduler_plans()
+	retire_legacy_signup()
 	_sync_client_scripts()
 	_sync_sales_stages()
 	_sync_quality_feedback_templates()
@@ -32,6 +43,16 @@ def after_migrate():
 	_remove_stale_fields()
 	_sync_custom_fields()
 	_sync_property_setters()
+	backfill_billing_start()
+	backfill_contact_mobile()
+	backfill_customer_primaries()
+	ensure_contract_template()
+	ensure_email_templates()
+	ensure_booking_url()
+	ensure_trial_customer_group()
+	ensure_cloud_plan_flags()
+	ensure_scheduler_plans()
+	retire_legacy_signup()
 	_sync_client_scripts()
 	_sync_sales_stages()
 	_sync_quality_feedback_templates()
@@ -55,10 +76,9 @@ _STALE_FIELDS = {
 		"mz_service_lines",
 		"mz_service_status",
 		"mz_technical_responsible",
-		# Old field that stored only the slug but was misleadingly named mz_tenant_url.
-		# Replaced by the mz_tenant (slug) + mz_tenant_url (full URL, read-only) pair.
-		"mz_tenant_url",
 	],
+	# Replaced the same day by the Item check (MZ SaaS Settings.premium_items).
+	"Subscription Plan": ["mz_scheduler_enabled"],
 	"Sales Invoice": [
 		"mz_contract",
 		"mz_customer_email",
@@ -78,118 +98,308 @@ def _remove_stale_fields():
 
 
 def _sync_custom_fields():
-	"""Programmatically ensure AI SaaS custom fields on Contract exist."""
-	if not frappe.db.exists("DocType", "Contract"):
-		return
-	try:
-		from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+	"""Custom Fields live in fixtures/custom_field.json (Contract, Lead, Subscription Plan) and
+	are applied by sync_fixtures on install and migrate. This hook only covers the one case
+	fixtures cannot: a site where the DocType is missing at fixture time is not our concern —
+	Contract, Lead and Subscription Plan are core ERPNext."""
+	return
 
-		create_custom_fields(
-			{
-				"Contract": [
-					{
-						"fieldname": "mz_saas_tab",
-						"label": "MozEconomia Cloud",
-						"fieldtype": "Tab Break",
-						"insert_after": "fulfilment_terms",
-						"module": "AI SaaS",
-					},
-					{
-						"fieldname": "mz_subscription_plan",
-						"label": "Plano de Subscrição",
-						"fieldtype": "Link",
-						"options": "Subscription Plan",
-						"insert_after": "mz_saas_tab",
-						"module": "AI SaaS",
-					},
-					{
-						# The user types only the slug part — e.g. "boa-construtora"
-						# The client script appends ".erp.mozeconomia.co.mz" visually.
-						"fieldname": "mz_tenant",
-						"label": "Subdomínio do Cliente",
-						"fieldtype": "Data",
-						"options": "",
-						"insert_after": "mz_subscription_plan",
-						"module": "AI SaaS",
-					},
-					{
-						# Computed by the client script: mz_tenant + ".erp.mozeconomia.co.mz"
-						# Read-only. Stores only the domain (no https://) — the email template
-						# prepends https:// when rendering the link.
-						"fieldname": "mz_tenant_url",
-						"label": "URL de Acesso",
-						"fieldtype": "Data",
-						"options": "",
-						"read_only": 1,
-						"insert_after": "mz_tenant",
-						"module": "AI SaaS",
-					},
-					{
-						"fieldname": "contact_email",
-						"label": "Email de Contacto",
-						"fieldtype": "Data",
-						"options": "Email",
-						"insert_after": "mz_tenant_url",
-						"module": "AI SaaS",
-					},
-					{
-						"fieldname": "mz_linked_subscription",
-						"label": "Subscrição ERPNext",
-						"fieldtype": "Link",
-						"options": "Subscription",
-						"read_only": 1,
-						"insert_after": "contact_email",
-						"module": "AI SaaS",
-					},
-					{
-						# The sales team selects which Frappe apps to install for this tenant.
-						# Pre-populated with defaults by the client script on form load.
-						"fieldname": "mz_apps_to_install",
-						"label": "Aplicações a Instalar",
-						"fieldtype": "Table",
-						"options": "MZ Tenant App",
-						"insert_after": "mz_linked_subscription",
-						"module": "AI SaaS",
-					},
-				],
-			},
-			ignore_validate=True,
-			update=True,
-		)
-	except Exception:
-		frappe.log_error(
-			title="AI SaaS: Sync Custom Fields Failed",
-			message=frappe.get_traceback(),
-		)
+
+def backfill_contact_mobile():
+	"""Contracts created before mz_contact_mobile existed take the Customer's mobile,
+	so the trial SMS reaches them. Fills empties only; idempotent."""
+	if not frappe.db.has_column("Contract", "mz_contact_mobile"):
+		return
+	frappe.db.sql(
+		"""UPDATE `tabContract` c JOIN `tabCustomer` cu ON cu.name = c.party_name
+		   SET c.mz_contact_mobile = cu.mobile_no
+		   WHERE c.party_type = 'Customer' AND c.mz_tenant IS NOT NULL AND c.mz_tenant != ''
+		     AND (c.mz_contact_mobile IS NULL OR c.mz_contact_mobile = '')
+		     AND cu.mobile_no IS NOT NULL AND cu.mobile_no != ''"""
+	)
+
+
+def backfill_billing_start():
+	"""E3: contracts signed before the field existed get mz_billing_start from
+	their Subscription's start_date, so the re-anchored Pós-Contrato emails keep
+	firing for them. Fills empties only; idempotent."""
+	if not frappe.db.has_column("Contract", "mz_billing_start"):
+		return
+	rows = frappe.db.sql(
+		"""
+		SELECT c.name, s.start_date
+		FROM `tabContract` c JOIN `tabSubscription` s ON s.name = c.mz_linked_subscription
+		WHERE c.docstatus = 1 AND c.is_signed = 1
+			AND (c.mz_billing_start IS NULL OR c.mz_billing_start = '')
+			AND s.start_date IS NOT NULL
+		""",
+		as_dict=True,
+	)
+	for r in rows:
+		frappe.db.set_value("Contract", r.name, "mz_billing_start", r.start_date, update_modified=False)
+
+
+def backfill_customer_primaries():
+	"""Cloud customers created before the funnel set both pointers get them now:
+	customer_primary_contact and customer_primary_address, resolved through Dynamic
+	Link. ERPNext addresses a customer through those two fields — an invoice email
+	dead-ends without the first, a printed invoice has no address without the second.
+	Fills empties only; idempotent."""
+	from ai_saas.saas.party import ensure_customer_primaries
+
+	if not frappe.db.has_column("Contract", "mz_tenant"):
+		return
+	names = frappe.db.sql_list(
+		"""
+		SELECT DISTINCT c.name
+		FROM `tabCustomer` c JOIN `tabContract` k ON k.party_name = c.name
+		WHERE k.docstatus = 1 AND IFNULL(k.mz_tenant, '') <> ''
+			AND (c.customer_primary_contact IS NULL OR c.customer_primary_address IS NULL)
+		"""
+	)
+	for name in names:
+		try:
+			ensure_customer_primaries(name)
+		except Exception:
+			frappe.log_error(title=f"AI SaaS: primaries not set for {name}", message=frappe.get_traceback())
+
+
+WELCOME_EMAIL_TEMPLATE = "MozEconomia Cloud - Entrega da Conta"
+
+# C2: the delivery email. Rendered by provisioning._send_welcome_email with the
+# context documented there. Create-if-missing — the copy belongs to the business.
+_WELCOME_EMAIL_HTML = """
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#020202">
+  <p>Olá {{ customer_name }},</p>
+  <p>A sua conta MozEconomia Cloud está pronta em
+     <a href="{{ site_url }}" style="color:#008000;font-weight:bold">{{ site_name }}</a>.</p>
+  <p><a href="{{ reset_link }}" style="display:inline-block;padding:12px 22px;background:#020202;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold">Definir a minha palavra-passe e entrar</a><br>
+     <span style="font-size:12px;color:#5a6270">Utilizador: {{ contact_email }} · esta ligação é de utilização única.</span></p>
+  {% if is_signed %}
+  <p>O seu plano <strong>{{ plan }}</strong> está activo. As facturas chegam a este email no início de cada período, com <strong>7 dias</strong> de prazo de pagamento.</p>
+  {% else %}
+  <p>Pode experimentar tudo, sem compromisso e sem qualquer pagamento antecipado, até <strong>{{ trial_end }}</strong>. Nessa data o acesso é suspenso — a não ser que active a conta antes. Activar não custa nada: a facturação só começa em {{ trial_end }}, mesmo que assine hoje.</p>
+  <table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr>
+    <td style="padding-right:10px"><a href="{{ activation_url }}" style="display:inline-block;padding:12px 22px;background:#020202;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold">Activar a minha conta</a></td>
+    <td><a href="{{ booking_url }}" style="display:inline-block;padding:12px 22px;border:1px solid #020202;color:#020202;border-radius:8px;text-decoration:none;font-weight:bold">Marcar uma chamada</a></td>
+  </tr></table>
+  <p style="font-size:13px">Plano escolhido: <strong>{{ plan }}</strong> — pode alterá-lo no momento da activação.</p>
+  {% endif %}
+  <p style="font-size:13px;color:#5a6270">Precisa de ajuda? <a href="mailto:cloud@mozeconomia.co.mz">cloud@mozeconomia.co.mz</a> · WhatsApp +258 87 4444 645</p>
+  <p>Com boas energias,<br><strong>Equipa MozEconomia Cloud</strong></p>
+</div>
+""".strip()
+
+
+_STYLE = "font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#020202"
+_BTN = "display:inline-block;padding:12px 22px;background:#020202;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold"
+_FOOTER = (
+	'<p style="font-size:13px;color:#5a6270">Precisa de ajuda? <a href="mailto:{{ help_email }}">{{ help_email }}</a>'
+	" · WhatsApp {{ help_whatsapp }}</p><p>Com boas energias,<br><strong>Equipa MozEconomia Cloud</strong></p></div>"
+)
+
+# F2/F3: the three lifecycle emails (saas/lifecycle_mail.py builds the context).
+LIFECYCLE_EMAIL_TEMPLATES = {
+	"MozEconomia Cloud - Conta Suspensa": {
+		"subject": "A conta MozEconomia Cloud da {{ customer_name }} foi suspensa",
+		"html": f'<div style="{_STYLE}">'
+		"<p>Olá {{ customer_name }},</p>"
+		"<p>O acesso à conta da <strong>{{ customer_name }}</strong> em {{ site_name }} foi suspenso hoje"
+		"{% if cause == 'trial' %} porque o período experimental terminou em <strong>{{ trial_end }}</strong> sem activação."
+		"{% elif cause == 'overdue' %} por falta de pagamento{% if invoice %} da factura <strong>{{ invoice }}</strong>"
+		"{% if outstanding %} ({{ outstanding }}{% if due_date %}, vencida em {{ due_date }}{% endif %}){% endif %}{% endif %}."
+		"{% else %}.{% endif %}</p>"
+		"<p><strong>Os seus dados estão intactos.</strong> Facturas, clientes, artigos, stock — tudo fica exactamente como o deixou. Nada foi apagado.</p>"
+		"{% if cause == 'trial' %}"
+		"<p>Para voltar a trabalhar basta activar a conta: o acesso é reposto de imediato e a facturação só começa nessa data.</p>"
+		f'<p><a href="{{{{ activation_url }}}}" style="{_BTN}">Activar e continuar de onde parei</a></p>'
+		"{% elif cause == 'overdue' %}"
+		"<p>Para repor o acesso, regularize a factura em atraso — o acesso volta no próprio dia do pagamento. "
+		"Se já pagou, responda a este email com o comprovativo e tratamos de imediato.</p>"
+		"{% else %}"
+		"<p>Para repor o acesso, responda a este email ou fale connosco pelo WhatsApp.</p>"
+		"{% endif %}"
+		"<p style=\"font-size:13px\"><strong>Importante:</strong> se a conta permanecer suspensa durante {{ grace_days }} dias será arquivada. "
+		"Guardamos uma cópia de segurança completa, mas o acesso directo deixa de existir e o restauro passa a ser feito pela nossa equipa.</p>"
+		+ _FOOTER,
+	},
+	"MozEconomia Cloud - Conta Arquivada": {
+		"subject": "A conta MozEconomia Cloud da {{ customer_name }} foi arquivada",
+		"html": f'<div style="{_STYLE}">'
+		"<p>Olá {{ customer_name }},</p>"
+		"<p>A conta da <strong>{{ customer_name }}</strong> em {{ site_name }} esteve suspensa"
+		"{% if suspended_on %} desde {{ suspended_on }}{% endif %} e foi arquivada hoje.</p>"
+		"<p>Antes de a desligar fizemos uma <strong>cópia de segurança completa</strong> de todos os dados — facturas, clientes, artigos, documentos anexados. Nada se perdeu.</p>"
+		"<p>Se quiser retomar, responda a este email ou fale connosco pelo WhatsApp: a nossa equipa restaura a conta a partir da cópia e "
+		"a {{ customer_name }} continua exactamente de onde parou.</p>"
+		+ _FOOTER,
+	},
+	"MozEconomia Cloud - Conta Activada": {
+		"subject": "A conta da {{ customer_name }} está activa — bem-vindo à MozEconomia Cloud",
+		"html": f'<div style="{_STYLE}">'
+		"<p>Olá {{ customer_name }},</p>"
+		"<p>A conta da <strong>{{ customer_name }}</strong> em {{ site_name }} é agora definitiva. "
+		"Tudo o que registou continua exactamente onde estava — nada foi migrado, nada se perdeu.</p>"
+		f'<p><a href="{{{{ site_url }}}}" style="{_BTN}">Entrar na minha conta</a></p>'
+		"<table cellpadding=\"4\" cellspacing=\"0\" style=\"border-collapse:collapse;margin:8px 0\">"
+		"<tr><td><strong>Plano</strong></td><td>{{ plan }}</td></tr>"
+		"<tr><td><strong>Início da facturação</strong></td><td>{{ billing_start or 'hoje' }}</td></tr>"
+		"</table>"
+		"<p>A primeira factura chega a este email em {{ billing_start or 'breve' }}, com 7 dias de prazo. "
+		"Pagamento por transferência bancária (ABSA, NIB 000200151510200470737) ou E-Mola (+258 87 4444 645), sempre com o número da factura como referência.</p>"
+		"<p style=\"font-size:13px\">Precisa de mudar de plano ou de corrigir os dados de facturação? Responda a este email e tratamos no próprio dia.</p>"
+		+ _FOOTER,
+	},
+	"MozEconomia Cloud - Conta Reactivada": {
+		"subject": "A conta MozEconomia Cloud da {{ customer_name }} está de volta",
+		"html": f'<div style="{_STYLE}">'
+		"<p>Olá {{ customer_name }},</p>"
+		"<p>A conta da <strong>{{ customer_name }}</strong> em {{ site_name }} foi reactivada e já está acessível. "
+		"Tudo o que registou está lá, tal como o deixou.</p>"
+		f'<p><a href="{{{{ site_url }}}}" style="{_BTN}">Entrar na minha conta</a></p>'
+		"{% if is_trial %}"
+		"<p>O período experimental foi prolongado até <strong>{{ new_trial_end or trial_end }}</strong>. "
+		"Active a conta antes dessa data e não volta a haver interrupção: "
+		'<a href="{{ activation_url }}">activar agora</a>.</p>'
+		"{% else %}"
+		"<p>O seu plano <strong>{{ plan }}</strong> está activo e as facturas continuam a chegar a este email.</p>"
+		"{% endif %}"
+		+ _FOOTER,
+	},
+}
+
+
+def ensure_email_templates():
+	"""C2 + F2: the customer emails sent from code live in Email Templates, not in
+	Python strings. Create-if-missing — after that the copy belongs to the business."""
+	if not frappe.db.exists("DocType", "Email Template"):
+		return
+	wanted = {
+		WELCOME_EMAIL_TEMPLATE: {
+			"subject": "{% if is_signed %}Bem-vindo à MozEconomia Cloud — conta activa{% else %}A sua conta MozEconomia Cloud está pronta{% endif %}",
+			"html": _WELCOME_EMAIL_HTML,
+		},
+		**LIFECYCLE_EMAIL_TEMPLATES,
+	}
+	for name, t in wanted.items():
+		if frappe.db.exists("Email Template", name):
+			continue
+		frappe.get_doc({
+			"doctype": "Email Template",
+			"name": name,
+			"subject": t["subject"],
+			"use_html": 1,
+			"response_html": t["html"],
+		}).insert(ignore_permissions=True)
+
+
+DEFAULT_BOOKING_URL = "https://calendly.com/arlindoboa/chamada-de-ativacao-mozeconomia"
+
+
+def ensure_booking_url():
+	"""Calls are booked on Calendly (decision 2026-08-27: ERPNext's /book_appointment is
+	not used). The link lives in MZ SaaS Settings so every email reads one place."""
+	if not frappe.db.get_single_value("MZ SaaS Settings", "booking_url"):
+		frappe.db.set_single_value("MZ SaaS Settings", "booking_url", DEFAULT_BOOKING_URL)
+
+
+TRIAL_CUSTOMER_GROUP = "Cloud - Trial"
+
+
+def ensure_trial_customer_group():
+	"""A4: trial customers live in their own group so sales reporting can filter them out."""
+	if frappe.db.exists("Customer Group", TRIAL_CUSTOMER_GROUP):
+		return
+	# The root group is translated on pt-MZ sites — resolve it, never assume its name.
+	root = frappe.db.get_value(
+		"Customer Group", {"is_group": 1, "parent_customer_group": ("in", ["", None])}, "name"
+	) or frappe.db.get_value("Customer Group", {"is_group": 1}, "name", order_by="lft asc")
+	if not root:
+		# App installed before the setup wizard: no tree yet. A parentless group here
+		# would become a second root and break the wizard ("Multiple root nodes").
+		# Re-run on every migrate, and lazily by the signup API, so it lands later.
+		return
+	frappe.get_doc({
+		"doctype": "Customer Group",
+		"customer_group_name": TRIAL_CUSTOMER_GROUP,
+		"parent_customer_group": root,
+		"is_group": 0,
+	}).insert(ignore_permissions=True)
+
+
+# A5: the second form is retired. Web Form, its DocType and its team notification —
+# removed from the site here because sync_fixtures never deletes anything, and
+# with for_reload=True delete_doc skips the queue this migrate must not depend on.
+def retire_legacy_signup():
+	if frappe.db.exists("Web Form", "lead-onboarding-form"):
+		frappe.delete_doc("Web Form", "lead-onboarding-form", force=True, ignore_permissions=True, for_reload=True)
+	if frappe.db.exists("Notification", "AI SaaS - Lead Form Submetido"):
+		frappe.db.delete("Notification Recipient", {"parent": "AI SaaS - Lead Form Submetido"})
+		frappe.db.delete("Notification", {"name": "AI SaaS - Lead Form Submetido"})
+	if frappe.db.exists("DocType", "Lead Onboarding"):
+		frappe.delete_doc("DocType", "Lead Onboarding", force=True, ignore_permissions=True, for_reload=True)
+		frappe.db.sql_ddl("DROP TABLE IF EXISTS `tabLead Onboarding`")
+	frappe.clear_cache()
 
 
 def _sync_property_setters():
-	"""Apply Property Setters that intentionally change standard ERPNext field behaviour for AI SaaS."""
-	if not frappe.db.exists("DocType", "Contract"):
+	"""Property Setters live in fixtures/property_setter.json (Contract.start_date reqd)."""
+	return
+
+
+_CONTRACT_TEMPLATE_TITLE = "MozEconomia Cloud"
+
+# Rendered by erpnext.crm.doctype.contract_template.contract_template.get_contract_template
+# against the contract document, so {{ ... }} placeholders are contract fields. This text is
+# what the customer accepts at activation — created once, then owned by the business: the
+# seeder never overwrites an existing template (B4).
+_CONTRACT_TEMPLATE_TERMS = """
+<h4>Termos de Serviço — MozEconomia Cloud</h4>
+<p>Contrato de prestação de serviços entre a MozEconomia, SA e <strong>{{ party_name }}</strong>.</p>
+<ol>
+<li><strong>Objecto.</strong> Disponibilização da plataforma MozEconomia Cloud, no plano
+<strong>{{ mz_subscription_plan }}</strong>, acessível em {{ mz_tenant_url }}.</li>
+<li><strong>Período experimental.</strong> Até {{ frappe.utils.formatdate(start_date) }} a utilização
+é gratuita e sem compromisso. A facturação inicia apenas após a assinatura deste contrato,
+nunca antes dessa data.</li>
+<li><strong>Facturação.</strong> As facturas são emitidas no início de cada período de subscrição,
+com prazo de pagamento de 7 dias.</li>
+<li><strong>Suspensão.</strong> A falta de pagamento prolongada pode levar à suspensão do acesso.
+Os dados permanecem intactos durante a suspensão e a reactivação restaura o serviço integralmente.</li>
+<li><strong>Dados.</strong> Os dados pertencem ao cliente. Em caso de encerramento da conta é
+efectuada uma cópia de segurança completa antes de qualquer remoção.</li>
+<li><strong>Suporte.</strong> cloud@mozeconomia.co.mz · +258 87 4444 645.</li>
+</ol>
+""".strip()
+
+
+def ensure_contract_template():
+	"""Create the Contract Template programmatic contract creation renders (B4).
+
+	contract_terms is reqd on Contract and only the desk JS fills it from a template —
+	an API-created contract must render this template server-side via
+	erpnext.crm.doctype.contract_template.contract_template.get_contract_template.
+	Create-if-missing only: the terms text belongs to the business after first creation.
+	"""
+	if not frappe.db.exists("DocType", "Contract Template"):
 		return
-	# Contract.start_date must be mandatory — subscriptions cannot be created without it.
-	_upsert_property_setter("Contract", "start_date", "reqd", "1", "Check")
-
-
-def _upsert_property_setter(doctype, fieldname, property, value, property_type):
-	"""Delete-then-recreate a Property Setter so re-migrate never raises a duplicate-key error."""
-	ps_name = f"{doctype}-{fieldname}-{property}"
-	if frappe.db.exists("Property Setter", ps_name):
-		frappe.delete_doc("Property Setter", ps_name, ignore_missing=True, force=True)
-	frappe.make_property_setter(
-		{"doctype": doctype, "fieldname": fieldname, "property": property, "value": value, "property_type": property_type},
-		ignore_validate=True,
-	)
+	if frappe.db.exists("Contract Template", _CONTRACT_TEMPLATE_TITLE):
+		return
+	frappe.get_doc({
+		"doctype": "Contract Template",
+		"title": _CONTRACT_TEMPLATE_TITLE,
+		"contract_terms": _CONTRACT_TEMPLATE_TERMS,
+	}).insert(ignore_permissions=True)
 
 
 # Client script: renders mz_tenant as a composite input — the user types only
 # the slug and the suffix ".erp.mozeconomia.co.mz" is shown attached to the
 # right of the input box, making the full domain immediately visible.
 # mz_tenant_url (read-only) is kept as the computed full URL for email templates.
-_DEFAULT_APPS = ["erpnext", "hrms", "erpnext_mz", "pos_next", "payments"]
+from ai_saas.saas.provisioning import DEFAULT_APPS as _DEFAULT_APPS  # noqa: E402 — one list, three consumers
 
 _CONTRACT_CLIENT_SCRIPT = """\
-var _DEFAULT_APPS = ['erpnext', 'hrms', 'erpnext_mz', 'pos_next', 'payments'];
+var _DEFAULT_APPS = __DEFAULT_APPS__;
 
 frappe.ui.form.on('Contract', {
 \trefresh: function(frm) {
@@ -253,6 +463,34 @@ function _populate_default_apps(frm) {
 \t}
 }
 """
+_CONTRACT_CLIENT_SCRIPT = _CONTRACT_CLIENT_SCRIPT.replace("__DEFAULT_APPS__", json.dumps(_DEFAULT_APPS))
+
+
+def ensure_cloud_plan_flags():
+	"""Seed Subscription Plan.mz_cloud_plan once for the plans self-service offers.
+	Only when nothing is flagged yet — afterwards the flag is the team's to manage."""
+	if not frappe.db.has_column("Subscription Plan", "mz_cloud_plan"):
+		return
+	if frappe.db.count("Subscription Plan", {"mz_cloud_plan": 1}):
+		return
+	for name in frappe.get_all("Subscription Plan", {"name": ("like", "%MozEconomia Cloud%")}, pluck="name"):
+		frappe.db.set_value("Subscription Plan", name, "mz_cloud_plan", 1, update_modified=False)
+
+
+def ensure_scheduler_plans():
+	"""C4: seed MZ SaaS Settings.scheduler_plans once with the plans named Premium.
+	Afterwards the table is the team's to manage."""
+	if not frappe.db.exists("DocType", "MZ Scheduler Plan"):
+		return
+	settings = frappe.get_single("MZ SaaS Settings")
+	if settings.get("scheduler_plans"):
+		return
+	plans = frappe.get_all("Subscription Plan", {"name": ("like", "%Premium%")}, pluck="name")
+	if not plans:
+		return
+	settings.set("scheduler_plans", [{"subscription_plan": p} for p in plans])
+	settings.flags.ignore_permissions = True
+	settings.save()
 
 
 def _sync_client_scripts():
@@ -274,11 +512,14 @@ def _sync_client_scripts():
 
 
 _CLOUD_SALES_STAGES = [
-	"Cloud - Account Created",
-	"Cloud - Qualified - Awaiting Setup",
-	"Cloud - Form Submitted",
-	"Cloud - Form Started",
-	"Cloud - Nurturing",
+"Cloud - Account Created",
+"Cloud - Qualified - Awaiting Setup",
+"Cloud - Form Submitted",
+"Cloud - Form Started",
+"Cloud - Nurturing",
+# D2 — set by usage_signals from the daily probe of the trial site.
+"Cloud - Trial Engaged",
+"Cloud - Trial At Risk",
 ]
 
 
@@ -290,8 +531,8 @@ def _sync_sales_stages():
 
 
 _QUALITY_FEEDBACK_TEMPLATES = {
-	"MZ Cloud - Primeiros Passos": ["Experiência inicial com o MozEconomia Cloud"],
-	"MZ Cloud - Primeiro Mês": ["Avaliação do primeiro mês com o MozEconomia Cloud"],
+"MZ Cloud - Primeiros Passos": ["Experiência inicial com o MozEconomia Cloud"],
+"MZ Cloud - Primeiro Mês": ["Avaliação do primeiro mês com o MozEconomia Cloud"],
 }
 
 
@@ -426,10 +667,10 @@ def ensure_multipay_modes_of_payment():
 					ignore_permissions=True
 				)
 			except Exception:
-				frappe.log_error(
-					title=f"AI SaaS: Could not create Mode of Payment '{mop}'",
-					message=frappe.get_traceback(),
-				)
+					frappe.log_error(
+						title=f"AI SaaS: Could not create Mode of Payment '{mop}'",
+						message=frappe.get_traceback(),
+					)
 
 
 def ensure_child_doctypes():
