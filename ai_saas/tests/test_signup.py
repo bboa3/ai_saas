@@ -216,7 +216,14 @@ class TestSignup(FrappeTestCase):
 	def test_submit_creates_everything_and_provisions(self, provision):
 		provision.side_effect = self._fake_provision()
 		token = self._walk_to_step3()
-		r = signup._submit(token)
+		# The endpoint is guest-whitelisted: everything _submit creates must succeed as
+		# Guest, who has no role on Customer/Contact/Address/Contract (2026-08-28: the
+		# Address display rendering ran a permission check and failed in production).
+		frappe.set_user("Guest")
+		try:
+			r = signup._submit(token)
+		finally:
+			frappe.set_user("Administrator")
 		self.assertEqual(r["state"], "progress")
 		self.assertIn(SLUG, r["site_url"])
 
@@ -239,6 +246,12 @@ class TestSignup(FrappeTestCase):
 		self.assertTrue(cust.customer_primary_contact)
 		self.assertEqual(cust.lead_name, doc.lead)
 		self.assertEqual(frappe.db.get_value("Lead", doc.lead, "mz_segment"), self.industry)
+		# the sector reaches the Contract and decides the apps (base + segment's, bench-filtered)
+		from ai_saas.saas.provisioning import apps_for_segment
+		con = frappe.get_doc("Contract", doc.contract)
+		self.assertEqual(con.mz_segment, self.industry)
+		self.assertEqual([r.app_name for r in con.mz_apps_to_install], apps_for_segment(self.industry, con.mz_subscription_plan))
+		self.assertEqual([r.app_name for r in con.mz_apps_to_install][:2] if not con.mz_apps_to_install[0].app_name == "hrms" else [r.app_name for r in con.mz_apps_to_install][1:3], ["erpnext", "erpnext_mz"])
 		opp = frappe.db.get_value("Opportunity", {"party_name": doc.lead}, ["sales_stage", "opportunity_from"], as_dict=True)
 		self.assertEqual((opp.sales_stage, opp.opportunity_from), ("Cloud - Account Created", "Lead"))
 		addr = frappe.db.get_value("Address", {"address_title": COMPANY}, ["address_type", "address_line1", "address_line2", "city", "state"], as_dict=True)

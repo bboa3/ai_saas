@@ -25,10 +25,79 @@ MAX_ATTEMPTS = 3
 PROVISION_TIMEOUT = 1200  # 20 min — bench new-site + app installs
 WIZARD_TIMEOUT = 300
 
-# Fallback used only when the Contract has no apps configured
-# The apps a tenant gets when the contract names none. Single source of truth:
-# install.py renders it into the Contract client script, api/signup.py fills it in.
-DEFAULT_APPS = ["erpnext", "hrms", "erpnext_mz", "pos_next", "payments"]
+# Which apps a tenant gets (decision 2026-08-28): the base on every tenant, plus what the
+# lead's segment declares (Segment Intelligence Map › Aplicações). Base apps go on
+# `bench new-site`; segment apps are installed one by one afterwards, so a failing extra
+# never costs the customer the account.
+BASE_APPS = ("erpnext", "erpnext_mz")
+# Apps erpnext_mz integrates with must be on the site before erpnext_mz's after_install
+# runs (payroll custom fields, IRPS ruleset) — they ride on new-site, ahead of it.
+INSTALL_BEFORE_MZ = ("hrms",)
+# On the bench but never a tenant app.
+EXCLUDED_APPS = ("frappe", "ai_saas", "curati_hub", "curati_connect")
+# Kept for the few callers that still say "the default list": base only.
+DEFAULT_APPS = list(BASE_APPS)
+
+
+def available_apps() -> list:
+	"""Apps this bench can install on a tenant (sites/apps.txt minus the platform apps)."""
+	path = os.path.join(get_bench_path(), "sites", "apps.txt")
+	try:
+		with open(path, encoding="utf-8") as f:
+			apps = [line.strip() for line in f if line.strip()]
+	except OSError:
+		apps = []
+	return [a for a in apps if a not in EXCLUDED_APPS]
+
+
+# Apps a segment may list but only a paid tier gets (decision 2026-08-28: every segment
+# has hrms, installed only on Profissional / Premium plans). The tier is the word the
+# Subscription Plan name starts with ("Premium Mensal - MozEconomia Cloud" → Premium).
+PLAN_TIERS = ("Básico", "Profissional", "Premium")
+PLAN_GATED_APPS = {"hrms": ("Profissional", "Premium")}
+
+
+def plan_tier(plan=None) -> str:
+	"""'Básico' / 'Profissional' / 'Premium' — the first tier word found anywhere in the
+	plan name, accent-insensitive ("_Test Basico - …" → Básico); '' when none (fail-closed:
+	an unknown tier gets no gated app)."""
+	folded = (plan or "").lower().replace("á", "a")
+	m = re.search(r"\b(basico|profissional|premium)\b", folded)
+	return {"basico": "Básico", "profissional": "Profissional", "premium": "Premium"}[m.group(1)] if m else ""
+
+
+def apps_for_segment(segment=None, plan=None) -> list:
+	"""BASE_APPS + the segment's Aplicações, filtered to what the bench has and to what the
+	plan allows (PLAN_GATED_APPS), in install order: INSTALL_BEFORE_MZ, erpnext, erpnext_mz,
+	then the extras as the segment lists them. No segment (or an unknown one) → base only.
+	Unknown app names are dropped here, quietly: provisioning logs what it actually installs."""
+	wanted = list(BASE_APPS)
+	if segment and frappe.db.exists("Segment Intelligence Map", segment):
+		rows = frappe.get_all("MZ Tenant App", filters={"parenttype": "Segment Intelligence Map", "parent": segment},
+		                      fields=["app_name"], order_by="idx")
+		wanted += [r.app_name.strip() for r in rows if (r.app_name or "").strip()]
+	tier = plan_tier(plan)
+	wanted = [a for a in wanted if a not in PLAN_GATED_APPS or tier in PLAN_GATED_APPS[a]]
+	bench_apps = set(available_apps())
+	seen, out = set(), []
+	for a in [*INSTALL_BEFORE_MZ, *BASE_APPS, *wanted]:
+		if a in wanted and a in bench_apps and a not in seen:
+			seen.add(a); out.append(a)
+	return out
+
+
+@frappe.whitelist()
+def get_apps_for_segment(segment=None, plan=None) -> list:
+	"""Desk: the Contract form fills its Aplicações grid from the chosen segment and plan."""
+	frappe.has_permission("Contract", "write", throw=True)
+	return apps_for_segment(segment, plan)
+
+
+def split_site_and_extra_apps(apps: list) -> tuple:
+	"""(apps for `bench new-site --install-app`, apps installed one by one afterwards)."""
+	site_apps = [a for a in [*INSTALL_BEFORE_MZ, *BASE_APPS] if a in apps]
+	extra = [a for a in apps if a not in site_apps]
+	return site_apps, extra
 
 # The setup wizard resolves its language argument with its own get_language_code(),
 # which looks the Language up by `language_name` and nothing else.  Handing it the
@@ -87,10 +156,11 @@ def provision_tenant(contract_name: str) -> None:
 	contact_password = _generate_admin_password()
 	contact_email = _resolve_contact_email(contract)
 
-	# Read app list from the Contract; fall back to DEFAULT_APPS if none configured
+	# The Contract's app list (filled from the segment at signup / in desk); an empty
+	# list means "whatever the segment says", base only when there is no segment.
 	apps = [row.app_name for row in (contract.get("mz_apps_to_install") or []) if row.app_name]
 	if not apps:
-		apps = list(DEFAULT_APPS)
+		apps = apps_for_segment(contract.get("mz_segment"), contract.get("mz_subscription_plan"))
 
 	prov = frappe.get_doc({
 		"doctype": "MZ Tenant Provisioning",
@@ -198,10 +268,11 @@ def _step_create_site(prov) -> None:
 
 	apps = [row.app_name for row in (prov.get("mz_provisioning_apps") or []) if row.app_name]
 	if not apps:
-		apps = list(DEFAULT_APPS)
+		apps = list(BASE_APPS)
+	site_apps, _extra = split_site_and_extra_apps(apps)
 
 	install_app_args = []
-	for app in apps:
+	for app in site_apps:
 		install_app_args += ["--install-app", app]
 
 	run_cmd(
@@ -224,7 +295,43 @@ def _step_create_site(prov) -> None:
 		prov=prov,
 		timeout=15,
 	)
-	_append_log(prov, f"Site {prov.site_name} criado, aplicações instaladas e host_name configurado.")
+	_append_log(prov, f"Site {prov.site_name} criado com {', '.join(site_apps)}; host_name configurado.")
+
+
+def _step_install_apps(prov) -> None:
+	"""The segment's apps, one `bench install-app` each. A failure is logged and reported
+	to ops, and provisioning goes on: the customer gets the account either way, the team
+	adds the missing app by hand. Retry-safe — apps already on the site are skipped."""
+	apps = [row.app_name for row in (prov.get("mz_provisioning_apps") or []) if row.app_name]
+	_site_apps, extra = split_site_and_extra_apps(apps)
+	if not extra:
+		return
+	installed = set(
+		run_cmd_capture([get_bench_cmd(), "--site", prov.site_name, "list-apps"], step="list-apps", prov=prov, timeout=60).split()
+	)
+	failed = []
+	for app in extra:
+		if app in installed:
+			_append_log(prov, f"App {app} já instalada — a saltar.")
+			continue
+		try:
+			run_cmd([get_bench_cmd(), "--site", prov.site_name, "install-app", app],
+			        step=f"install-app {app}", prov=prov, timeout=PROVISION_TIMEOUT)
+			_append_log(prov, f"App {app} instalada.")
+		except ProvisioningError as exc:
+			failed.append(app)
+			_append_log(prov, f"AVISO: app {app} não instalada — {exc}")
+	if failed:
+		notify_ops(
+			f"Apps não instaladas em {prov.site_name}: {', '.join(failed)}",
+			f"<p>O site <strong>{prov.site_name}</strong> foi criado e o provisionamento continua, mas estas apps "
+			f"do segmento falharam: <strong>{', '.join(failed)}</strong>.</p>"
+			f"<p>Instalar à mão: <code>bench --site {prov.site_name} install-app &lt;app&gt;</code>. "
+			f"Registo: MZ Tenant Provisioning / {prov.name}</p>",
+			reference_doctype="MZ Tenant Provisioning", reference_name=prov.name,
+		)
+	prov.save(ignore_permissions=True)
+	frappe.db.commit()
 
 
 def _step_ensure_language(prov) -> None:
@@ -957,6 +1064,7 @@ def _append_log(prov, message: str) -> None:
 # currency, time zone, date and number format with its own values.
 PROVISIONING_STEPS = (
 	_step_create_site,
+	_step_install_apps,
 	_step_ensure_language,
 	_step_run_setup_wizard,
 	_step_apply_system_settings,

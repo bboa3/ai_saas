@@ -1,337 +1,345 @@
 {
-	"actions": [],
-	"autoname": "field:segmento",
-	"creation": "2026-05-01 00:00:00",
-	"doctype": "DocType",
-	"editable_grid": 1,
-	"engine": "InnoDB",
-	"field_order": [
-		"perfil_section",
-		"segmento",
-		"tipo_experiencia_implantacao",
-		"descricao_operacional",
-		"column_break_perfil",
-		"plano_recomendado",
-		"maturidade_digital",
-		"risco_fiscal_mz",
-		"recorrencia_faturacao",
-		"atributos_section",
-		"complexidade_operacional",
-		"intensidade_financeira",
-		"dependencia_stock",
-		"column_break_atrib",
-		"score_prioridade",
-		"custos_ocultos_severidade",
-		"impacto_section",
-		"perda_mensal_estimada_min",
-		"perda_mensal_estimada_max",
-		"conformidade_mz",
-		"tipos_negocio_json_section",
-		"tipos_negocio_cobertos",
-		"modelo_negocio",
-		"modelo_receita",
-		"tags_busca_semantica",
-		"column_break_json1",
-		"tags_diferenciadoras",
-		"modulos_minimos",
-		"modulos_upsell",
-		"configuracoes_criticas",
-		"integracoes_recomendadas",
-		"customizacoes_especificas",
-		"dores_json_section",
-		"dores_estruturadas",
-		"oportunidades_section",
-		"oportunidades_upsell",
-		"gatilhos_acao",
-		"qualificacao_section",
-		"red_flags",
-		"green_flags",
-		"column_break_qual",
-		"objecoes_frequentes",
-		"argumentos_chave_comerciais"
-	],
-	"fields": [
-		{
-			"fieldname": "perfil_section",
-			"fieldtype": "Section Break",
-			"label": "Perfil do Segmento"
-		},
-		{
-			"fieldname": "segmento",
-			"fieldtype": "Data",
-			"label": "Segmento",
-			"reqd": 1,
-			"in_list_view": 1,
-			"in_standard_filter": 1,
-			"unique": 1
-		},
-		{
-			"fieldname": "tipo_experiencia_implantacao",
-			"fieldtype": "Select",
-			"label": "Tipo de Experiência de Implantação",
-			"options": "\nrapido_padrao\nImplementacao_assistida\npremium_personalizado",
-			"in_list_view": 1
-		},
-		{
-			"fieldname": "descricao_operacional",
-			"fieldtype": "Text",
-			"label": "Descrição Operacional"
-		},
-		{
-			"fieldname": "column_break_perfil",
-			"fieldtype": "Column Break"
-		},
-		{
-			"fieldname": "plano_recomendado",
-			"fieldtype": "Select",
-			"label": "Plano Recomendado",
-			"options": "\nBásico\nProfissional\nPremium",
-			"in_list_view": 1
-		},
-		{
-			"fieldname": "maturidade_digital",
-			"fieldtype": "Select",
-			"label": "Maturidade Digital",
-			"options": "\nInicial\nEmergente\nEstruturado\nOtimizado"
-		},
-		{
-			"fieldname": "risco_fiscal_mz",
-			"fieldtype": "Select",
-			"label": "Risco Fiscal MZ",
-			"options": "\nBaixo\nMedio\nAlto\nCritico"
-		},
-		{
-			"fieldname": "recorrencia_faturacao",
-			"fieldtype": "Select",
-			"label": "Recorrência de Faturação",
-			"options": "\nUnica\nMensal\nPor_Marco\nSazonal\nContinuo"
-		},
-		{
-			"fieldname": "atributos_section",
-			"fieldtype": "Section Break",
-			"label": "Atributos Base do Negócio"
-		},
-		{
-			"fieldname": "complexidade_operacional",
-			"fieldtype": "Int",
-			"label": "Complexidade Operacional (1–5)",
-			"description": "Escala de 1 a 5"
-		},
-		{
-			"fieldname": "intensidade_financeira",
-			"fieldtype": "Int",
-			"label": "Intensidade Financeira (1–5)",
-			"description": "Escala de 1 a 5"
-		},
-		{
-			"fieldname": "dependencia_stock",
-			"fieldtype": "Int",
-			"label": "Dependência de Stock (1–5)",
-			"description": "Escala de 1 a 5"
-		},
-		{
-			"fieldname": "column_break_atrib",
-			"fieldtype": "Column Break"
-		},
-		{
-			"fieldname": "score_prioridade",
-			"fieldtype": "Float",
-			"label": "Score de Prioridade (1–10)",
-			"description": "Escala de 1 a 10"
-		},
-		{
-			"fieldname": "custos_ocultos_severidade",
-			"fieldtype": "Int",
-			"label": "Severidade de Custos Ocultos (1–5)",
-			"description": "Escala de 1 a 5"
-		},
-		{
-			"fieldname": "impacto_section",
-			"fieldtype": "Section Break",
-			"label": "Impacto Financeiro"
-		},
-		{
-			"fieldname": "perda_mensal_estimada_min",
-			"fieldtype": "Currency",
-			"label": "Perda Mensal Estimada — Mín (MZN)"
-		},
-		{
-			"fieldname": "perda_mensal_estimada_max",
-			"fieldtype": "Currency",
-			"label": "Perda Mensal Estimada — Máx (MZN)"
-		},
-		{
-			"fieldname": "conformidade_mz",
-			"fieldtype": "Table",
-			"label": "Conformidade MZ Necessária",
-			"options": "Conformidade MZ",
-			"description": "Lista de tipos de conformidade fiscal obrigatória"
-		},
-		{
-			"fieldname": "tipos_negocio_json_section",
-			"fieldtype": "Section Break",
-			"label": "Perfil, Módulos e Integrações"
-		},
-		{
-			"fieldname": "tipos_negocio_cobertos",
-			"fieldtype": "Table",
-			"label": "Tipos de Negócio Cobertos",
-			"options": "Tipo de Negocio"
-		},
-		{
-			"fieldname": "modelo_negocio",
-			"fieldtype": "Table",
-			"label": "Modelo de Negócio",
-			"options": "Modelo de Negocio"
-		},
-		{
-			"fieldname": "modelo_receita",
-			"fieldtype": "Table",
-			"label": "Modelo de Receita",
-			"options": "Modelo de Receita"
-		},
-		{
-			"fieldname": "tags_busca_semantica",
-			"fieldtype": "Table",
-			"label": "Tags de Busca Semântica",
-			"options": "Tag Busca Semantica"
-		},
-		{
-			"fieldname": "column_break_json1",
-			"fieldtype": "Column Break"
-		},
-		{
-			"fieldname": "tags_diferenciadoras",
-			"fieldtype": "Table",
-			"label": "Tags Diferenciadoras por Tipo",
-			"options": "Tag Diferenciadora"
-		},
-		{
-			"fieldname": "modulos_minimos",
-			"fieldtype": "Table",
-			"label": "Módulos Mínimos ERPNext",
-			"options": "Modulo ERPNext"
-		},
-		{
-			"fieldname": "modulos_upsell",
-			"fieldtype": "Table",
-			"label": "Módulos Upsell ERPNext",
-			"options": "Modulo ERPNext"
-		},
-		{
-			"fieldname": "configuracoes_criticas",
-			"fieldtype": "Table",
-			"label": "Configurações Críticas",
-			"options": "Configuracao Critica"
-		},
-		{
-			"fieldname": "integracoes_recomendadas",
-			"fieldtype": "Table",
-			"label": "Integrações Recomendadas",
-			"options": "Integracao Recomendada"
-		},
-		{
-			"fieldname": "customizacoes_especificas",
-			"fieldtype": "Table",
-			"label": "Customizações Específicas",
-			"options": "Customizacao Especifica"
-		},
-		{
-			"fieldname": "dores_json_section",
-			"fieldtype": "Section Break",
-			"label": "Dores Estruturadas"
-		},
-		{
-			"fieldname": "dores_estruturadas",
-			"fieldtype": "Table",
-			"label": "Dores Estruturadas",
-			"options": "Dore Estruturada"
-		},
-		{
-			"fieldname": "oportunidades_section",
-			"fieldtype": "Section Break",
-			"label": "Oportunidades e Gatilhos"
-		},
-		{
-			"fieldname": "oportunidades_upsell",
-			"fieldtype": "Table",
-			"label": "Oportunidades de Upsell",
-			"options": "Oportunidade Upsell"
-		},
-		{
-			"fieldname": "gatilhos_acao",
-			"fieldtype": "Table",
-			"label": "Gatilhos de Ação",
-			"options": "Gatilho Acao"
-		},
-		{
-			"fieldname": "qualificacao_section",
-			"fieldtype": "Section Break",
-			"label": "Qualificação Comercial"
-		},
-		{
-			"fieldname": "red_flags",
-			"fieldtype": "Table",
-			"label": "Red Flags",
-			"options": "Red Flag"
-		},
-		{
-			"fieldname": "green_flags",
-			"fieldtype": "Table",
-			"label": "Green Flags",
-			"options": "Green Flag"
-		},
-		{
-			"fieldname": "column_break_qual",
-			"fieldtype": "Column Break"
-		},
-		{
-			"fieldname": "objecoes_frequentes",
-			"fieldtype": "Table",
-			"label": "Objeções Frequentes",
-			"options": "Objecao Frequente"
-		},
-		{
-			"fieldname": "argumentos_chave_comerciais",
-			"fieldtype": "Table",
-			"label": "Argumentos-Chave Comerciais",
-			"options": "Argumento Chave Comercial"
-		}
-	],
-	"links": [],
-	"modified": "2026-05-01 00:00:00",
-	"modified_by": "Administrator",
-	"module": "AI SaaS",
-	"name": "Segment Intelligence Map",
-	"owner": "Administrator",
-	"permissions": [
-		{
-			"create": 1,
-			"delete": 1,
-			"email": 1,
-			"export": 1,
-			"print": 1,
-			"read": 1,
-			"report": 1,
-			"role": "System Manager",
-			"share": 1,
-			"write": 1
-		},
-		{
-			"create": 1,
-			"delete": 0,
-			"email": 1,
-			"export": 1,
-			"print": 1,
-			"read": 1,
-			"report": 1,
-			"role": "Sales Manager",
-			"share": 1,
-			"write": 1
-		}
-	],
-	"sort_field": "modified",
-	"sort_order": "DESC",
-	"states": [],
-	"track_changes": 1
+ "actions": [],
+ "autoname": "field:segmento",
+ "creation": "2026-05-01 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "perfil_section",
+  "segmento",
+  "tipo_experiencia_implantacao",
+  "descricao_operacional",
+  "column_break_perfil",
+  "plano_recomendado",
+  "maturidade_digital",
+  "risco_fiscal_mz",
+  "recorrencia_faturacao",
+  "atributos_section",
+  "complexidade_operacional",
+  "intensidade_financeira",
+  "dependencia_stock",
+  "column_break_atrib",
+  "score_prioridade",
+  "custos_ocultos_severidade",
+  "impacto_section",
+  "perda_mensal_estimada_min",
+  "perda_mensal_estimada_max",
+  "conformidade_mz",
+  "tipos_negocio_json_section",
+  "tipos_negocio_cobertos",
+  "modelo_negocio",
+  "modelo_receita",
+  "tags_busca_semantica",
+  "column_break_json1",
+  "tags_diferenciadoras",
+  "modulos_minimos",
+  "modulos_upsell",
+  "aplicacoes",
+  "configuracoes_criticas",
+  "integracoes_recomendadas",
+  "customizacoes_especificas",
+  "dores_json_section",
+  "dores_estruturadas",
+  "oportunidades_section",
+  "oportunidades_upsell",
+  "gatilhos_acao",
+  "qualificacao_section",
+  "red_flags",
+  "green_flags",
+  "column_break_qual",
+  "objecoes_frequentes",
+  "argumentos_chave_comerciais"
+ ],
+ "fields": [
+  {
+   "fieldname": "perfil_section",
+   "fieldtype": "Section Break",
+   "label": "Perfil do Segmento"
+  },
+  {
+   "fieldname": "segmento",
+   "fieldtype": "Data",
+   "label": "Segmento",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "tipo_experiencia_implantacao",
+   "fieldtype": "Select",
+   "label": "Tipo de Experiência de Implantação",
+   "options": "\nrapido_padrao\nImplementacao_assistida\npremium_personalizado",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "descricao_operacional",
+   "fieldtype": "Text",
+   "label": "Descrição Operacional"
+  },
+  {
+   "fieldname": "column_break_perfil",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "plano_recomendado",
+   "fieldtype": "Select",
+   "label": "Plano Recomendado",
+   "options": "\nBásico\nProfissional\nPremium",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "maturidade_digital",
+   "fieldtype": "Select",
+   "label": "Maturidade Digital",
+   "options": "\nInicial\nEmergente\nEstruturado\nOtimizado"
+  },
+  {
+   "fieldname": "risco_fiscal_mz",
+   "fieldtype": "Select",
+   "label": "Risco Fiscal MZ",
+   "options": "\nBaixo\nMedio\nAlto\nCritico"
+  },
+  {
+   "fieldname": "recorrencia_faturacao",
+   "fieldtype": "Select",
+   "label": "Recorrência de Faturação",
+   "options": "\nUnica\nMensal\nPor_Marco\nSazonal\nContinuo"
+  },
+  {
+   "fieldname": "atributos_section",
+   "fieldtype": "Section Break",
+   "label": "Atributos Base do Negócio"
+  },
+  {
+   "fieldname": "complexidade_operacional",
+   "fieldtype": "Int",
+   "label": "Complexidade Operacional (1–5)",
+   "description": "Escala de 1 a 5"
+  },
+  {
+   "fieldname": "intensidade_financeira",
+   "fieldtype": "Int",
+   "label": "Intensidade Financeira (1–5)",
+   "description": "Escala de 1 a 5"
+  },
+  {
+   "fieldname": "dependencia_stock",
+   "fieldtype": "Int",
+   "label": "Dependência de Stock (1–5)",
+   "description": "Escala de 1 a 5"
+  },
+  {
+   "fieldname": "column_break_atrib",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "score_prioridade",
+   "fieldtype": "Float",
+   "label": "Score de Prioridade (1–10)",
+   "description": "Escala de 1 a 10"
+  },
+  {
+   "fieldname": "custos_ocultos_severidade",
+   "fieldtype": "Int",
+   "label": "Severidade de Custos Ocultos (1–5)",
+   "description": "Escala de 1 a 5"
+  },
+  {
+   "fieldname": "impacto_section",
+   "fieldtype": "Section Break",
+   "label": "Impacto Financeiro"
+  },
+  {
+   "fieldname": "perda_mensal_estimada_min",
+   "fieldtype": "Currency",
+   "label": "Perda Mensal Estimada — Mín (MZN)"
+  },
+  {
+   "fieldname": "perda_mensal_estimada_max",
+   "fieldtype": "Currency",
+   "label": "Perda Mensal Estimada — Máx (MZN)"
+  },
+  {
+   "fieldname": "conformidade_mz",
+   "fieldtype": "Table",
+   "label": "Conformidade MZ Necessária",
+   "options": "Conformidade MZ",
+   "description": "Lista de tipos de conformidade fiscal obrigatória"
+  },
+  {
+   "fieldname": "tipos_negocio_json_section",
+   "fieldtype": "Section Break",
+   "label": "Perfil, Módulos e Integrações"
+  },
+  {
+   "fieldname": "tipos_negocio_cobertos",
+   "fieldtype": "Table",
+   "label": "Tipos de Negócio Cobertos",
+   "options": "Tipo de Negocio"
+  },
+  {
+   "fieldname": "modelo_negocio",
+   "fieldtype": "Table",
+   "label": "Modelo de Negócio",
+   "options": "Modelo de Negocio"
+  },
+  {
+   "fieldname": "modelo_receita",
+   "fieldtype": "Table",
+   "label": "Modelo de Receita",
+   "options": "Modelo de Receita"
+  },
+  {
+   "fieldname": "tags_busca_semantica",
+   "fieldtype": "Table",
+   "label": "Tags de Busca Semântica",
+   "options": "Tag Busca Semantica"
+  },
+  {
+   "fieldname": "column_break_json1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tags_diferenciadoras",
+   "fieldtype": "Table",
+   "label": "Tags Diferenciadoras por Tipo",
+   "options": "Tag Diferenciadora"
+  },
+  {
+   "fieldname": "modulos_minimos",
+   "fieldtype": "Table",
+   "label": "Módulos Mínimos ERPNext",
+   "options": "Modulo ERPNext"
+  },
+  {
+   "fieldname": "modulos_upsell",
+   "fieldtype": "Table",
+   "label": "Módulos Upsell ERPNext",
+   "options": "Modulo ERPNext"
+  },
+  {
+   "fieldname": "aplicacoes",
+   "fieldtype": "Table",
+   "label": "Aplicações a instalar (além da base erpnext + erpnext_mz)",
+   "options": "MZ Tenant App",
+   "description": "Apps do bench instaladas no site de cada tenant deste sector, uma a uma, depois da base. Ex.: hrms, pos_next, healthcare, webshop, payments."
+  },
+  {
+   "fieldname": "configuracoes_criticas",
+   "fieldtype": "Table",
+   "label": "Configurações Críticas",
+   "options": "Configuracao Critica"
+  },
+  {
+   "fieldname": "integracoes_recomendadas",
+   "fieldtype": "Table",
+   "label": "Integrações Recomendadas",
+   "options": "Integracao Recomendada"
+  },
+  {
+   "fieldname": "customizacoes_especificas",
+   "fieldtype": "Table",
+   "label": "Customizações Específicas",
+   "options": "Customizacao Especifica"
+  },
+  {
+   "fieldname": "dores_json_section",
+   "fieldtype": "Section Break",
+   "label": "Dores Estruturadas"
+  },
+  {
+   "fieldname": "dores_estruturadas",
+   "fieldtype": "Table",
+   "label": "Dores Estruturadas",
+   "options": "Dore Estruturada"
+  },
+  {
+   "fieldname": "oportunidades_section",
+   "fieldtype": "Section Break",
+   "label": "Oportunidades e Gatilhos"
+  },
+  {
+   "fieldname": "oportunidades_upsell",
+   "fieldtype": "Table",
+   "label": "Oportunidades de Upsell",
+   "options": "Oportunidade Upsell"
+  },
+  {
+   "fieldname": "gatilhos_acao",
+   "fieldtype": "Table",
+   "label": "Gatilhos de Ação",
+   "options": "Gatilho Acao"
+  },
+  {
+   "fieldname": "qualificacao_section",
+   "fieldtype": "Section Break",
+   "label": "Qualificação Comercial"
+  },
+  {
+   "fieldname": "red_flags",
+   "fieldtype": "Table",
+   "label": "Red Flags",
+   "options": "Red Flag"
+  },
+  {
+   "fieldname": "green_flags",
+   "fieldtype": "Table",
+   "label": "Green Flags",
+   "options": "Green Flag"
+  },
+  {
+   "fieldname": "column_break_qual",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "objecoes_frequentes",
+   "fieldtype": "Table",
+   "label": "Objeções Frequentes",
+   "options": "Objecao Frequente"
+  },
+  {
+   "fieldname": "argumentos_chave_comerciais",
+   "fieldtype": "Table",
+   "label": "Argumentos-Chave Comerciais",
+   "options": "Argumento Chave Comercial"
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-28 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "AI SaaS",
+ "name": "Segment Intelligence Map",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
 }

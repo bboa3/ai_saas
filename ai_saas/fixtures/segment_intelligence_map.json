@@ -449,6 +449,29 @@
     "parenttype": "Segment Intelligence Map",
     "tipo": "Farmácias & Drogarias"
    }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Comércio a Retalho",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   },
+   {
+    "app_name": "pos_next",
+    "parent": "Comércio a Retalho",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   },
+   {
+    "app_name": "payments",
+    "parent": "Comércio a Retalho",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   }
   ]
  },
  {
@@ -878,6 +901,29 @@
     "parenttype": "Segment Intelligence Map",
     "tipo": "Importadores & Exportadores"
    }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Distribuição & Atacado",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   },
+   {
+    "app_name": "pos_next",
+    "parent": "Distribuição & Atacado",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   },
+   {
+    "app_name": "payments",
+    "parent": "Distribuição & Atacado",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   }
   ]
  },
  {
@@ -1243,6 +1289,15 @@
     "parentfield": "tipos_negocio_cobertos",
     "parenttype": "Segment Intelligence Map",
     "tipo": "Subcontratados & Especialistas"
+   }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Construção Civil",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
    }
   ]
  },
@@ -1628,6 +1683,15 @@
     "parentfield": "tipos_negocio_cobertos",
     "parenttype": "Segment Intelligence Map",
     "tipo": "TI, Desenvolvimento de Software & Telecom"
+   }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Consultoria & Serviços Técnicos",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
    }
   ]
  },
@@ -2052,6 +2116,29 @@
     "parenttype": "Segment Intelligence Map",
     "tipo": "Bares, Discotecas & Entretenimento"
    }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Restauração & Catering",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   },
+   {
+    "app_name": "pos_next",
+    "parent": "Restauração & Catering",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   },
+   {
+    "app_name": "payments",
+    "parent": "Restauração & Catering",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   }
   ]
  },
  {
@@ -2423,6 +2510,15 @@
     "parentfield": "tipos_negocio_cobertos",
     "parenttype": "Segment Intelligence Map",
     "tipo": "Operadores de Frotas Comerciais"
+   }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Transporte de Cargas & Gestão de Frotas",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
    }
   ]
  },
@@ -2821,6 +2917,29 @@
     "parenttype": "Segment Intelligence Map",
     "tipo": "Postos de Combustível & Lojas de Conveniência"
    }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Mobilidade & Serviços Automóveis",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   },
+   {
+    "app_name": "pos_next",
+    "parent": "Mobilidade & Serviços Automóveis",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   },
+   {
+    "app_name": "payments",
+    "parent": "Mobilidade & Serviços Automóveis",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   }
   ]
  },
  {
@@ -3198,6 +3317,15 @@
     "parentfield": "tipos_negocio_cobertos",
     "parenttype": "Segment Intelligence Map",
     "tipo": "Centros de Formação Profissional & E-learning"
+   }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Educação & Formação",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
    }
   ]
  },
@@ -3608,6 +3736,22 @@
     "parenttype": "Segment Intelligence Map",
     "tipo": "Centros de Bem-Estar & Estética Profissional"
    }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Saúde & Bem-Estar",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   },
+   {
+    "app_name": "healthcare",
+    "parent": "Saúde & Bem-Estar",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   }
   ]
  },
  {
@@ -3973,6 +4117,15 @@
     "parentfield": "tipos_negocio_cobertos",
     "parenttype": "Segment Intelligence Map",
     "tipo": "Centros de Distribuição Regional"
+   }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Logística & Armazenagem",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
    }
   ]
  },
@@ -4386,6 +4539,15 @@
     "parenttype": "Segment Intelligence Map",
     "tipo": "Agências de Mediação Imobiliária"
    }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Imobiliário & Gestão de Propriedades",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   }
   ]
  },
  {
@@ -4777,6 +4939,15 @@
     "parenttype": "Segment Intelligence Map",
     "tipo": "Cooperativas & Associações de Produtores"
    }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Agropecuária Comercial",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   }
   ]
  },
  {
@@ -5154,6 +5325,29 @@
     "parentfield": "tipos_negocio_cobertos",
     "parenttype": "Segment Intelligence Map",
     "tipo": "Agências de Viagens, Operadores Turísticos & Rent-a-Car Turístico"
+   }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Hotelaria & Turismo",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   },
+   {
+    "app_name": "pos_next",
+    "parent": "Hotelaria & Turismo",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   },
+   {
+    "app_name": "payments",
+    "parent": "Hotelaria & Turismo",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
    }
   ]
  },
@@ -5567,6 +5761,15 @@
     "parenttype": "Segment Intelligence Map",
     "tipo": "Cooperativas de Serviços & Utilidades"
    }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "ONGs & Instituições",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   }
   ]
  },
  {
@@ -5965,6 +6168,15 @@
     "parenttype": "Segment Intelligence Map",
     "tipo": "Metalomecânica, Carpintaria & Serralharia"
    }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Indústria & Transformação",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
+   }
   ]
  },
  {
@@ -6345,6 +6557,15 @@
     "parentfield": "tipos_negocio_cobertos",
     "parenttype": "Segment Intelligence Map",
     "tipo": "Serviços de Apoio à Mineração & Logística Rural"
+   }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Extracção & Serviços Mineiros",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
    }
   ]
  },
@@ -6757,6 +6978,15 @@
     "parentfield": "tipos_negocio_cobertos",
     "parenttype": "Segment Intelligence Map",
     "tipo": "Fintechs, Processadores de Pagamento & Wallets"
+   }
+  ],
+  "aplicacoes": [
+   {
+    "app_name": "hrms",
+    "parent": "Serviços Financeiros & Seguros",
+    "parentfield": "aplicacoes",
+    "parenttype": "Segment Intelligence Map",
+    "doctype": "MZ Tenant App"
    }
   ]
  }

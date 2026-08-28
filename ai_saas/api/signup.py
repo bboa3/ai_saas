@@ -414,7 +414,7 @@ def _create_documents(signup):
 	from erpnext.crm.doctype.contract_template.contract_template import get_contract_template
 
 	from ai_saas.install import _CONTRACT_TEMPLATE_TITLE, TRIAL_CUSTOMER_GROUP
-	from ai_saas.saas.provisioning import DEFAULT_APPS
+	from ai_saas.saas.provisioning import apps_for_segment
 	from ai_saas.saas.contract_lifecycle import _get_company
 
 	s = get_settings()
@@ -509,7 +509,8 @@ def _create_documents(signup):
 		"doctype": "Contract", "party_type": "Customer", "party_name": customer.name,
 		"start_date": add_days(nowdate(), s.trial_length_days), "contract_template": _CONTRACT_TEMPLATE_TITLE,
 		"mz_subscription_plan": signup.plan, "mz_tenant": slug, "mz_tenant_url": slug + DOMAIN_SUFFIX,
-		"contact_email": signup.email, "mz_contact_name": signup.full_name, "mz_contact_mobile": signup.phone, "mz_apps_to_install": [{"app_name": a} for a in DEFAULT_APPS],
+		"contact_email": signup.email, "mz_contact_name": signup.full_name, "mz_contact_mobile": signup.phone,
+		"mz_segment": signup.industry, "mz_apps_to_install": [{"app_name": a} for a in apps_for_segment(signup.industry, signup.plan)],
 	}
 	rendered = get_contract_template(_CONTRACT_TEMPLATE_TITLE, contract_fields)
 	contract_fields["contract_terms"] = (

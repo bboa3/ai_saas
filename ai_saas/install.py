@@ -456,11 +456,7 @@ def ensure_contract_template():
 # the slug and the suffix ".erp.mozeconomia.co.mz" is shown attached to the
 # right of the input box, making the full domain immediately visible.
 # mz_tenant_url (read-only) is kept as the computed full URL for email templates.
-from ai_saas.saas.provisioning import DEFAULT_APPS as _DEFAULT_APPS  # noqa: E402 — one list, three consumers
-
 _CONTRACT_CLIENT_SCRIPT = """\
-var _DEFAULT_APPS = __DEFAULT_APPS__;
-
 frappe.ui.form.on('Contract', {
 \trefresh: function(frm) {
 \t\t_attach_tenant_suffix(frm);
@@ -469,6 +465,12 @@ frappe.ui.form.on('Contract', {
 \t},
 \tmz_tenant: function(frm) {
 \t\t_update_tenant_url(frm);
+\t},
+\tmz_segment: function(frm) {
+\t\t_populate_default_apps(frm, true);
+\t},
+\tmz_subscription_plan: function(frm) {
+\t\t_populate_default_apps(frm, true);
 \t}
 });
 
@@ -512,18 +514,22 @@ function _update_tenant_url(frm) {
 \t}
 }
 
-function _populate_default_apps(frm) {
-\t// Pre-fill the apps table with defaults on new documents or when the list is empty.
-\t// The sales team can then add, remove, or reorder apps before signing the contract.
-\tif (frm.doc.__islocal || !(frm.doc.mz_apps_to_install || []).length) {
-\t\tvar rows = _DEFAULT_APPS.map(function(app) {
-\t\t\treturn { app_name: app };
-\t\t});
-\t\tfrm.set_value('mz_apps_to_install', rows);
-\t}
+function _populate_default_apps(frm, force) {
+\t// The apps grid follows the segment and the plan: base apps + what Segment Intelligence Map
+\t// declares, minus the apps the plan tier does not include (hrms needs Profissional/Premium).
+\t// Filled when the document is new / the grid is empty, and again whenever the segment
+\t// changes. Sales can still add, remove or reorder rows before submitting.
+\tif (!force && !(frm.doc.__islocal || !(frm.doc.mz_apps_to_install || []).length)) return;
+\tfrappe.call({
+\t\tmethod: 'ai_saas.saas.provisioning.get_apps_for_segment',
+\t\targs: { segment: frm.doc.mz_segment || null, plan: frm.doc.mz_subscription_plan || null },
+\t\tcallback: function(r) {
+\t\t\tvar rows = (r.message || []).map(function(app) { return { app_name: app }; });
+\t\t\tfrm.set_value('mz_apps_to_install', rows);
+\t\t}
+\t});
 }
 """
-_CONTRACT_CLIENT_SCRIPT = _CONTRACT_CLIENT_SCRIPT.replace("__DEFAULT_APPS__", json.dumps(_DEFAULT_APPS))
 
 
 def ensure_cloud_plan_flags():

@@ -15,7 +15,7 @@ def set_customer_primaries(customer, contact=None, address=None, email=None, mob
 
 	Returns what was written, so callers can tell filled from left-alone.
 	"""
-	from frappe.contacts.doctype.address.address import get_address_display
+	from frappe.contacts.doctype.address.address import render_address
 
 	name = customer if isinstance(customer, str) else customer.name
 	current = frappe.db.get_value(
@@ -29,7 +29,10 @@ def set_customer_primaries(customer, contact=None, address=None, email=None, mob
 		updates["customer_primary_contact"] = contact
 	if address and not current.customer_primary_address:
 		updates["customer_primary_address"] = address
-		updates["primary_address"] = get_address_display(address)   # the read-only display ERPNext prints
+		# The read-only display ERPNext prints. Rendered without the permission check:
+		# self-service signup runs as Guest, who has no role on Address — the address
+		# was created by this same code path a moment ago.
+		updates["primary_address"] = render_address(address, check_permissions=False)
 	if not current.email_id:
 		email = email or (contact and frappe.db.get_value("Contact", contact, "email_id"))
 		if email:
