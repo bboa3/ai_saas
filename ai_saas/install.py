@@ -31,6 +31,7 @@ def after_install():
 	ensure_cloud_plan_flags()
 	ensure_scheduler_plans()
 	retire_legacy_signup()
+	retire_notifications()
 	_sync_client_scripts()
 	_sync_sales_stages()
 	_sync_quality_feedback_templates()
@@ -57,6 +58,7 @@ def after_migrate():
 	ensure_cloud_plan_flags()
 	ensure_scheduler_plans()
 	retire_legacy_signup()
+	retire_notifications()
 	_sync_client_scripts()
 	_sync_sales_stages()
 	_sync_quality_feedback_templates()
@@ -390,6 +392,24 @@ def ensure_trial_customer_group():
 # A5: the second form is retired. Web Form, its DocType and its team notification —
 # removed from the site here because sync_fixtures never deletes anything, and
 # with for_reload=True delete_doc skips the queue this migrate must not depend on.
+# Notifications removed from the fixture over time. Fixture sync never deletes, so a
+# production site keeps sending them until something removes the records — this does.
+RETIRED_NOTIFICATIONS = (
+	"AI SaaS - Lembrete 1",
+	"AI SaaS - Lead Nurture - Dia 5",
+	"AI SaaS - Lead Nurture - Dia 15",
+	"AI SaaS - Lead Nurture - Dia 30",
+	"AI SaaS - Aviso de Desativação",
+	"AI SaaS - Marcação Confirmada",
+)
+
+
+def retire_notifications():
+	for name in RETIRED_NOTIFICATIONS:
+		if frappe.db.exists("Notification", name):
+			frappe.delete_doc("Notification", name, force=True, ignore_permissions=True, ignore_missing=True)
+
+
 def retire_legacy_signup():
 	if frappe.db.exists("Web Form", "lead-onboarding-form"):
 		frappe.delete_doc("Web Form", "lead-onboarding-form", force=True, ignore_permissions=True, for_reload=True)
