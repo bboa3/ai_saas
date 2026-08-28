@@ -791,3 +791,7 @@ Also: `engagement_score`, `signal`, `invoice_days_7d` shown in the snapshot list
 ### 2026-08-28 — Signup as Guest: Address display rendering
 
 First real signup on `/registo` failed at `_create_documents` with "O usuário Guest não tem acesso … Endereço": `party.set_customer_primaries` filled `Customer.primary_address` through `get_address_display(name)`, which loads the Address and runs `check_permission()` — the endpoint is guest-whitelisted, and Guest has no role on Address. Now `render_address(address, check_permissions=False)` (the Address was created by the same code path). The rollback in `_submit` had left nothing behind; a Failed signup without a Contract is retried on the next submit. `test_submit_creates_everything_and_provisions` now runs `_submit` as Guest so any permission check on the signup path fails in tests, not in production.
+
+### 2026-08-29 — /registo: no frappe dialogs
+
+A "Pedido inválido" dialog opened on page load: `frappe.call`'s status-code handlers `msgprint` on every 403/417 (a stale resume token from localStorage hitting `status`, any validation refusal) before the page's own `catch` runs. `index.js::api()` now POSTs to `/api/method/…` with `fetch`, parses `_server_messages` itself and shows everything inline; a refused stale token is forgotten silently. Verified with raw calls: `status` (bogus token) → 403 + "Ligação de registo inválida ou expirada."; `start` (no name) → 417 + "Indique o seu nome." — both handled by the page, no dialog.

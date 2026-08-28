@@ -3,18 +3,35 @@
   var cfg = window.MZ_SIGNUP || {};
   var TOKEN_KEY = "mz_signup_token";
   var token = cfg.token || "";
+  // Direct call to /api/method — not frappe.call, whose status-code handlers open a
+  // "Pedido inválido" / "Não permitido" dialog on every refused request (a stale resume
+  // token on page load, a validation refusal) before our own handling runs. All messages
+  // are shown by this page, inline.
   var api = function (method, args) {
     return new Promise(function (resolve, reject) {
       var done = false;
       var timer = setTimeout(function () { if (!done) { done = true; console.error("registo:", method, "timed out"); reject("Sem resposta do servidor. Verifique a ligação e tente novamente."); } }, 25000);
-      frappe.call({ method: "ai_saas.api.signup." + method, args: args, type: "POST",
-        callback: function (r) { if (done) return; done = true; clearTimeout(timer); resolve(r.message); },
-        error: function (r) { if (done) return; done = true; clearTimeout(timer); console.error("registo:", method, "failed", r); reject(serverMessage(r)); },
-        always: function (r) { if (!done && r && r.exc) { done = true; clearTimeout(timer); console.error("registo:", method, "exc", r); reject(serverMessage(r)); } } });
+      var headers = { "Content-Type": "application/json", "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" };
+      var csrf = (window.frappe && frappe.csrf_token) || (window.csrf_token) || "";
+      if (csrf && csrf !== "None") headers["X-Frappe-CSRF-Token"] = csrf;
+      fetch("/api/method/ai_saas.api.signup." + method, { method: "POST", credentials: "same-origin", headers: headers, body: JSON.stringify(args || {}) })
+        .then(function (res) { return res.text().then(function (t) { var j = null; try { j = t ? JSON.parse(t) : null; } catch (e) {} return { ok: res.ok, status: res.status, body: j }; }); })
+        .then(function (r) {
+          if (done) return; done = true; clearTimeout(timer);
+          if (r.ok && r.body && !r.body.exc) { resolve(r.body.message); return; }
+          console.error("registo:", method, "failed", r.status, r.body);
+          reject(serverMessage(r.body));
+        })
+        .catch(function (e) { if (done) return; done = true; clearTimeout(timer); console.error("registo:", method, "network", e); reject("Não foi possível contactar o servidor. Verifique a ligação e tente novamente."); });
     });
   };
-  function serverMessage(r) {
-    try { return JSON.parse(JSON.parse(r._server_messages)[0]).message; } catch (e) {}
+  function serverMessage(body) {
+    try {
+      var msgs = JSON.parse(body._server_messages);
+      var m = JSON.parse(msgs[msgs.length - 1]).message;
+      if (m) return String(m).replace(/<[^>]+>/g, "");
+    } catch (e) {}
+    try { if (body.exception) { var ex = String(body.exception); var i = ex.lastIndexOf(": "); if (i > -1 && ex.length - i < 200) return ex.slice(i + 2); } } catch (e) {}
     return "Não foi possível continuar. Tente novamente.";
   }
   function forgetToken() { token = ""; try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} }
