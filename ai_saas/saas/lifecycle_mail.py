@@ -49,10 +49,12 @@ def build_context(contract_name: str, **extra) -> dict:
 	from ai_saas.saas.activation import get_activation_url
 	from ai_saas.saas.provisioning import get_booking_url
 	from ai_saas.saas.tenant_lifecycle import get_settings
+	from ai_saas.utils.jinja import mz_first_name, mz_greeting, mz_signature
 
 	contract = frappe.db.get_value(
 		"Contract", contract_name,
-		["party_name", "contact_email", "is_signed", "start_date", "mz_subscription_plan", "mz_billing_start"],
+		["party_name", "contact_email", "is_signed", "start_date", "mz_subscription_plan", "mz_billing_start",
+		 "mz_contact_name", "mz_account_manager"],
 		as_dict=True,
 	)
 	customer = frappe.db.get_value(
@@ -66,6 +68,9 @@ def build_context(contract_name: str, **extra) -> dict:
 
 	context = {
 		"customer_name": customer.customer_name or contract.party_name,
+		"first_name": mz_first_name(contract.mz_contact_name),
+		"greeting": mz_greeting(contract.mz_contact_name),
+		"signature": mz_signature(contract.mz_account_manager),
 		"contact_email": contract.contact_email or customer.email_id or "",
 		"site_name": prov.site_name or "",
 		"site_url": f"https://{prov.site_name}" if prov.site_name else "",

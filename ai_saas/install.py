@@ -21,10 +21,12 @@ def after_install():
 	_sync_property_setters()
 	backfill_billing_start()
 	backfill_contact_mobile()
+	backfill_contact_name()
 	backfill_customer_primaries()
 	ensure_contract_template()
 	ensure_email_templates()
 	ensure_booking_url()
+	ensure_daily_alerts_hour()
 	ensure_trial_customer_group()
 	ensure_cloud_plan_flags()
 	ensure_scheduler_plans()
@@ -45,10 +47,12 @@ def after_migrate():
 	_sync_property_setters()
 	backfill_billing_start()
 	backfill_contact_mobile()
+	backfill_contact_name()
 	backfill_customer_primaries()
 	ensure_contract_template()
 	ensure_email_templates()
 	ensure_booking_url()
+	ensure_daily_alerts_hour()
 	ensure_trial_customer_group()
 	ensure_cloud_plan_flags()
 	ensure_scheduler_plans()
@@ -119,6 +123,40 @@ def backfill_contact_mobile():
 	)
 
 
+def backfill_contact_name():
+	"""Contracts created before mz_contact_name existed take the Customer's primary
+	contact's first name, so the relationship emails greet a person. Empties only."""
+	if not frappe.db.has_column("Contract", "mz_contact_name"):
+		return
+	frappe.db.sql(
+		"""UPDATE `tabContract` c
+		   JOIN `tabCustomer` cu ON cu.name = c.party_name
+		   JOIN `tabContact` ct ON ct.name = cu.customer_primary_contact
+		   SET c.mz_contact_name = TRIM(CONCAT(IFNULL(ct.first_name, ''), ' ', IFNULL(ct.last_name, '')))
+		   WHERE c.party_type = 'Customer' AND c.mz_tenant IS NOT NULL AND c.mz_tenant != ''
+		     AND (c.mz_contact_name IS NULL OR c.mz_contact_name = '')
+		     AND ct.first_name IS NOT NULL AND ct.first_name != ''"""
+	)
+
+
+DAILY_ALERTS_JOB = "frappe.email.doctype.notification.notification.trigger_daily_alerts"
+DAILY_ALERTS_CRON = "0 8 * * *"
+
+
+def ensure_daily_alerts_hour():
+	"""Scheduled customer emails (Days Before/After) go out at 08:00 site time, not 00:00,
+	so the time-of-day greeting reads 'Bom dia'. frappe's sync_jobs resets the job to
+	'Daily' on every migrate, hence re-pinned here (after_migrate runs after sync_jobs)."""
+	name = frappe.db.get_value("Scheduled Job Type", {"method": DAILY_ALERTS_JOB}, "name")
+	if not name:
+		return
+	job = frappe.get_doc("Scheduled Job Type", name)
+	if job.frequency != "Cron" or job.cron_format != DAILY_ALERTS_CRON:
+		job.frequency = "Cron"
+		job.cron_format = DAILY_ALERTS_CRON
+		job.save(ignore_permissions=True)
+
+
 def backfill_billing_start():
 	"""E3: contracts signed before the field existed get mz_billing_start from
 	their Subscription's start_date, so the re-anchored Pós-Contrato emails keep
@@ -170,40 +208,51 @@ WELCOME_EMAIL_TEMPLATE = "MozEconomia Cloud - Entrega da Conta"
 # context documented there. Create-if-missing — the copy belongs to the business.
 _WELCOME_EMAIL_HTML = """
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#020202">
-  <p>Olá {{ customer_name }},</p>
-  <p>A sua conta MozEconomia Cloud está pronta em
+  <p>{{ greeting }}</p>
+  <p>A conta da <strong>{{ customer_name }}</strong> está pronta em
      <a href="{{ site_url }}" style="color:#008000;font-weight:bold">{{ site_name }}</a>.</p>
   <p><a href="{{ reset_link }}" style="display:inline-block;padding:12px 22px;background:#020202;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold">Definir a minha palavra-passe e entrar</a><br>
      <span style="font-size:12px;color:#5a6270">Utilizador: {{ contact_email }} · esta ligação é de utilização única.</span></p>
   {% if is_signed %}
   <p>O seu plano <strong>{{ plan }}</strong> está activo. As facturas chegam a este email no início de cada período, com <strong>7 dias</strong> de prazo de pagamento.</p>
   {% else %}
-  <p>Pode experimentar tudo, sem compromisso e sem qualquer pagamento antecipado, até <strong>{{ trial_end }}</strong>. Nessa data o acesso é suspenso — a não ser que active a conta antes. Activar não custa nada: a facturação só começa em {{ trial_end }}, mesmo que assine hoje.</p>
-  <table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr>
-    <td style="padding-right:10px"><a href="{{ activation_url }}" style="display:inline-block;padding:12px 22px;background:#020202;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold">Activar a minha conta</a></td>
-    <td><a href="{{ booking_url }}" style="display:inline-block;padding:12px 22px;border:1px solid #020202;color:#020202;border-radius:8px;text-decoration:none;font-weight:bold">Marcar uma chamada</a></td>
-  </tr></table>
-  <p style="font-size:13px">Plano escolhido: <strong>{{ plan }}</strong> — pode alterá-lo no momento da activação.</p>
+  <p>Tem até <strong>{{ trial_end }}</strong> para experimentar tudo — facturas certificadas, clientes, stock, salários — sem qualquer pagamento. Comece pela primeira factura: leva 5 minutos e mostra logo se serve ao seu negócio.</p>
+  <p><strong>Activar não custa nada</strong> — a facturação começa no dia em que activar. Quando decidir: <a href="{{ activation_url }}" style="color:#008000;font-weight:bold">activar a minha conta</a>. Plano escolhido: <strong>{{ plan }}</strong> — pode alterá-lo na activação.</p>
+  <p>20 minutos connosco: emitimos a primeira factura consigo, sem custo — <a href="{{ booking_url }}" style="color:#008000;font-weight:bold">marcar 20 minutos</a>.</p>
   {% endif %}
-  <p style="font-size:13px;color:#5a6270">Precisa de ajuda? <a href="mailto:cloud@mozeconomia.co.mz">cloud@mozeconomia.co.mz</a> · WhatsApp +258 87 4444 645</p>
-  <p>Com boas energias,<br><strong>Equipa MozEconomia Cloud</strong></p>
+  <p style="font-size:13px;color:#5a6270">Responda a este email ou fale connosco: <a href="mailto:cloud@mozeconomia.co.mz" style="color:#008000;font-weight:bold">cloud@mozeconomia.co.mz</a> · WhatsApp +258 87 4444 645</p>
+  {{ signature }}
 </div>
 """.strip()
 
 
+_WELCOME_EMAIL_SUBJECT = "{% if is_signed %}Bem-vindo à MozEconomia Cloud — conta activa{% else %}A sua conta MozEconomia Cloud está pronta{% endif %}"
+
 _STYLE = "font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#020202"
 _BTN = "display:inline-block;padding:12px 22px;background:#020202;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold"
-_FOOTER = (
-	'<p style="font-size:13px;color:#5a6270">Precisa de ajuda? <a href="mailto:{{ help_email }}">{{ help_email }}</a>'
-	" · WhatsApp {{ help_whatsapp }}</p><p>Com boas energias,<br><strong>Equipa MozEconomia Cloud</strong></p></div>"
+_LINK = "color:#008000;font-weight:bold"  # secondary, inline branded link — never a second pill
+
+# The communication language's fixed lines — written once, reused verbatim in the
+# Email Templates below and mirrored in fixtures/notification.json.
+HELP_EMAIL = "cloud@mozeconomia.co.mz"
+HELP_WHATSAPP = "+258 87 4444 645"
+SUPPORT_LINE = (
+	f'<p style="font-size:13px;color:#5a6270">Responda a este email ou fale connosco: '
+	f'<a href="mailto:{HELP_EMAIL}" style="{_LINK}">{HELP_EMAIL}</a> · WhatsApp {HELP_WHATSAPP}</p>'
 )
+TRIAL_PROMISE = "<p><strong>Activar não custa nada</strong> — a facturação começa no dia em que activar.</p>"
+CALL_OFFER = (
+	'<p>20 minutos connosco: emitimos a primeira factura consigo, sem custo — '
+	f'<a href="{{{{ booking_url }}}}" style="{_LINK}">marcar 20 minutos</a>.</p>'
+)
+_FOOTER = SUPPORT_LINE + "{{ signature }}</div>"
 
 # F2/F3: the three lifecycle emails (saas/lifecycle_mail.py builds the context).
 LIFECYCLE_EMAIL_TEMPLATES = {
 	"MozEconomia Cloud - Conta Suspensa": {
 		"subject": "A conta MozEconomia Cloud da {{ customer_name }} foi suspensa",
 		"html": f'<div style="{_STYLE}">'
-		"<p>Olá {{ customer_name }},</p>"
+		"<p>{{ greeting }}</p>"
 		"<p>O acesso à conta da <strong>{{ customer_name }}</strong> em {{ site_name }} foi suspenso hoje"
 		"{% if cause == 'trial' %} porque o período experimental terminou em <strong>{{ trial_end }}</strong> sem activação."
 		"{% elif cause == 'overdue' %} por falta de pagamento{% if invoice %} da factura <strong>{{ invoice }}</strong>"
@@ -211,7 +260,7 @@ LIFECYCLE_EMAIL_TEMPLATES = {
 		"{% else %}.{% endif %}</p>"
 		"<p><strong>Os seus dados estão intactos.</strong> Facturas, clientes, artigos, stock — tudo fica exactamente como o deixou. Nada foi apagado.</p>"
 		"{% if cause == 'trial' %}"
-		"<p>Para voltar a trabalhar basta activar a conta: o acesso é reposto de imediato e a facturação só começa nessa data.</p>"
+		"<p>Para voltar a trabalhar basta activar a conta: o acesso é reposto de imediato e a facturação só começa no dia em que activar.</p>"
 		f'<p><a href="{{{{ activation_url }}}}" style="{_BTN}">Activar e continuar de onde parei</a></p>'
 		"{% elif cause == 'overdue' %}"
 		"<p>Para repor o acesso, regularize a factura em atraso — o acesso volta no próprio dia do pagamento. "
@@ -226,18 +275,18 @@ LIFECYCLE_EMAIL_TEMPLATES = {
 	"MozEconomia Cloud - Conta Arquivada": {
 		"subject": "A conta MozEconomia Cloud da {{ customer_name }} foi arquivada",
 		"html": f'<div style="{_STYLE}">'
-		"<p>Olá {{ customer_name }},</p>"
+		"<p>{{ greeting }}</p>"
 		"<p>A conta da <strong>{{ customer_name }}</strong> em {{ site_name }} esteve suspensa"
 		"{% if suspended_on %} desde {{ suspended_on }}{% endif %} e foi arquivada hoje.</p>"
 		"<p>Antes de a desligar fizemos uma <strong>cópia de segurança completa</strong> de todos os dados — facturas, clientes, artigos, documentos anexados. Nada se perdeu.</p>"
-		"<p>Se quiser retomar, responda a este email ou fale connosco pelo WhatsApp: a nossa equipa restaura a conta a partir da cópia e "
-		"a {{ customer_name }} continua exactamente de onde parou.</p>"
+		"<p>Guardamos essa cópia durante <strong>12 meses</strong>. Dentro desse prazo, responda a este email ou fale connosco pelo WhatsApp: "
+		"a nossa equipa restaura a conta a partir da cópia e a {{ customer_name }} continua exactamente de onde parou.</p>"
 		+ _FOOTER,
 	},
 	"MozEconomia Cloud - Conta Activada": {
 		"subject": "A conta da {{ customer_name }} está activa — bem-vindo à MozEconomia Cloud",
 		"html": f'<div style="{_STYLE}">'
-		"<p>Olá {{ customer_name }},</p>"
+		"<p>{{ greeting }}</p>"
 		"<p>A conta da <strong>{{ customer_name }}</strong> em {{ site_name }} é agora definitiva. "
 		"Tudo o que registou continua exactamente onde estava — nada foi migrado, nada se perdeu.</p>"
 		f'<p><a href="{{{{ site_url }}}}" style="{_BTN}">Entrar na minha conta</a></p>'
@@ -253,7 +302,7 @@ LIFECYCLE_EMAIL_TEMPLATES = {
 	"MozEconomia Cloud - Conta Reactivada": {
 		"subject": "A conta MozEconomia Cloud da {{ customer_name }} está de volta",
 		"html": f'<div style="{_STYLE}">'
-		"<p>Olá {{ customer_name }},</p>"
+		"<p>{{ greeting }}</p>"
 		"<p>A conta da <strong>{{ customer_name }}</strong> em {{ site_name }} foi reactivada e já está acessível. "
 		"Tudo o que registou está lá, tal como o deixou.</p>"
 		f'<p><a href="{{{{ site_url }}}}" style="{_BTN}">Entrar na minha conta</a></p>'
@@ -275,10 +324,7 @@ def ensure_email_templates():
 	if not frappe.db.exists("DocType", "Email Template"):
 		return
 	wanted = {
-		WELCOME_EMAIL_TEMPLATE: {
-			"subject": "{% if is_signed %}Bem-vindo à MozEconomia Cloud — conta activa{% else %}A sua conta MozEconomia Cloud está pronta{% endif %}",
-			"html": _WELCOME_EMAIL_HTML,
-		},
+		WELCOME_EMAIL_TEMPLATE: {"subject": _WELCOME_EMAIL_SUBJECT, "html": _WELCOME_EMAIL_HTML},
 		**LIFECYCLE_EMAIL_TEMPLATES,
 	}
 	for name, t in wanted.items():
@@ -291,6 +337,20 @@ def ensure_email_templates():
 			"use_html": 1,
 			"response_html": t["html"],
 		}).insert(ignore_permissions=True)
+
+
+def push_email_templates():
+	"""Overwrite the site's Email Templates with the copy in this file. Not run on migrate
+	(the copy belongs to the business after creation) — `bench execute` it when a copy
+	revision is shipped: bench --site X execute ai_saas.install.push_email_templates"""
+	wanted = {
+		WELCOME_EMAIL_TEMPLATE: {"subject": _WELCOME_EMAIL_SUBJECT, "html": _WELCOME_EMAIL_HTML},
+		**LIFECYCLE_EMAIL_TEMPLATES,
+	}
+	for name, t in wanted.items():
+		if frappe.db.exists("Email Template", name):
+			frappe.db.set_value("Email Template", name, {"subject": t["subject"], "response_html": t["html"], "use_html": 1})
+	frappe.db.commit()
 
 
 DEFAULT_BOOKING_URL = "https://calendly.com/arlindoboa/chamada-de-ativacao-mozeconomia"

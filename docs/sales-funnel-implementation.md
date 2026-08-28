@@ -759,3 +759,19 @@ Also: `engagement_score`, `signal`, `invoice_days_7d` shown in the snapshot list
 - Fixture count 24 → 27 notifications (5 removed, 8 added); the removed ones deleted from erp.local.
 
 **Verified.** `test_messaging.py` (+3): the five removed names are gone and the nurture set is exactly {0, 3, 10, 20}; the invoice SMS refuses a non-subscription invoice; no message links to `cloud-feedback`; the seven overdue/deadline notifications carry the expected anchor, fire on a subscription invoice, render without residue, SMS bodies name the invoice and stay short; `Primeira factura` and `SMS Trial Hoje` carry the right anchors and the SMS requires a mobile. `test_activation.py`: `_activate` sends exactly `("activated", contract)`. `test_tenant_lifecycle.py`: the *Conta Activada* render states plan, billing start and site URL. Full suite 106/106.
+
+### 2026-08-28 — Provisioning failure: the lead is never told
+
+**Decision (user).** No lead should know we had a problem provisioning their instance; the team is alerted to act fast, the customer is not.
+
+**Built.** The retries-exhausted branch of `_handle_failure` that emailed the lead "Problema temporário com a sua conta" is removed. `_send_failure_alert` (every attempt, to `ops_alert_recipients`) now states that the lead was not informed and, when attempts are exhausted, prefixes the subject with **URGENTE** and says there are no more automatic retries — the human must fix and press "Tentar Novamente"; the lead then receives the normal delivery email. Row removed from `notifications_review.csv`; copy review updated.
+
+**Verified.** `test_provisioning_retry` 4/4; syntax check (ruff not installed in this env).
+
+### 2026-08-28 — Communication language applied to every customer message
+
+**Decisions (user).** Relationship register: time-of-day greeting to the first name, "Com boas energias" signed by the account manager (Settings › default sales user, copied to `Contract.mz_account_manager` at signing), inbox cloud@. Formal register (billing/dunning): Prezado(a) + "Com os melhores cumprimentos", contacto@. CTA = the branded pill link, one per message. Mozambican Portuguese. Scheduled emails at 08:00. Billing documents untouched. Conta Arquivada promises 12 months to restore (AT retention is 10 years). SMS Vencimento Hoje sends people to the invoice email for bank details (replies to SMS are not seen).
+
+**Built.** `utils/jinja.py` helpers; `Contract.mz_contact_name` + `mz_account_manager` (fixture, signup, backfill from primary Contact); `install.ensure_daily_alerts_hour` pins frappe's daily-alerts job to `0 8 * * *` after every migrate; standard blocks (`SUPPORT_LINE`, `TRIAL_PROMISE`, `CALL_OFFER`, `_LINK`) and `push_email_templates()`; every relationship message rewritten group by group (signup, delivery, trial, activation/pós-contrato, dunning register fixes, lifecycle) — see `docs/communication-copy-review.md` for the language and each message's objective. Live on erp.local (fields inserted, templates pushed, notifications updated in place).
+
+**Verified.** Full `ai_saas` suite 111/111, incl. `TestCommunicationLanguage` (greeting by hour, signature fallback, cron pin, one voice across all non-billing messages, every message renders with a greeting).

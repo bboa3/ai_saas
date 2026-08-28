@@ -747,21 +747,9 @@ def _handle_failure(prov, error_message: str) -> None:
 			enqueue_after_commit=True,
 			provisioning_name=prov.name,
 		)
-	else:
-		# All retries exhausted — inform the customer
-		if prov.contact_email:
-			frappe.sendmail(
-				recipients=[prov.contact_email],
-				subject="Problema temporário com a sua conta MozEconomia Cloud",
-				message=(
-					f"<p>Prezado(a) {prov.customer_name},</p>"
-					f"<p>Encontrámos um problema técnico ao preparar a sua instância. "
-					f"A nossa equipa foi notificada e entrará em contacto em breve.</p>"
-					f"<p>Pedimos desculpa pelo inconveniente.</p>"
-					f"<p><strong>Equipa MozEconomia Cloud</strong></p>"
-				),
-				delayed=False,
-			)
+	# When retries are exhausted nothing more is sent: the lead is never told that provisioning
+	# failed — the team alert above (sent on every attempt) is what triggers the human fix, and the
+	# lead simply receives the delivery email once "Tentar Novamente" succeeds.
 
 
 # ---------------------------------------------------------------------------
@@ -771,12 +759,17 @@ def _handle_failure(prov, error_message: str) -> None:
 def _welcome_email_context(prov, reset_link: str) -> dict:
 	"""Context the delivery Email Template renders with (C2)."""
 	from ai_saas.saas.activation import get_activation_url
+	from ai_saas.utils.jinja import mz_first_name, mz_greeting, mz_signature
 
 	contract = frappe.db.get_value(
-		"Contract", prov.contract, ["is_signed", "start_date", "mz_subscription_plan"], as_dict=True
+		"Contract", prov.contract,
+		["is_signed", "start_date", "mz_subscription_plan", "mz_contact_name", "mz_account_manager"], as_dict=True,
 	) or frappe._dict()
 	return {
 		"customer_name": prov.customer_name,
+		"first_name": mz_first_name(contract.get("mz_contact_name")),
+		"greeting": mz_greeting(contract.get("mz_contact_name")),
+		"signature": mz_signature(contract.get("mz_account_manager")),
 		"contact_email": prov.contact_email,
 		"site_name": prov.site_name,
 		"site_url": f"https://{prov.site_name}",
@@ -820,10 +813,18 @@ def _send_welcome_email(prov, reset_link: str) -> None:
 
 def _send_failure_alert(prov, error_message: str) -> None:
 	signup = frappe.db.get_value("MZ Signup", {"contract": prov.contract}, "name")
+	exhausted = prov.attempts >= MAX_ATTEMPTS
+	urgency = (
+		"<p style='color:#c0392b'><strong>Tentativas esgotadas — não há mais repetições automáticas. "
+		"O lead NÃO foi informado; está à espera da conta. Corrija e use «Tentar Novamente» já.</strong></p>"
+		if exhausted
+		else "<p>Será repetido automaticamente. O lead não foi informado.</p>"
+	)
 	notify_ops(
-		f"Falha no provisionamento: {prov.site_name}",
+		f"{'URGENTE — ' if exhausted else ''}Falha no provisionamento: {prov.site_name}",
 		f"<p>O provisionamento automático para <strong>{prov.site_name}</strong> falhou.</p>"
 		f"<p><strong>Tentativa:</strong> {prov.attempts} de {MAX_ATTEMPTS}</p>"
+		+ urgency +
 		f"<p><strong>Erro:</strong></p><pre>{frappe.utils.escape_html(error_message[:2000])}</pre>"
 		f"<p>Ver registo: MZ Tenant Provisioning / {prov.name} · Contrato {prov.contract}</p>"
 		+ (f"<p>Registo de auto-serviço: MZ Signup / {signup}</p>" if signup else ""),

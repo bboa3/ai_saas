@@ -509,7 +509,7 @@ def _create_documents(signup):
 		"doctype": "Contract", "party_type": "Customer", "party_name": customer.name,
 		"start_date": add_days(nowdate(), s.trial_length_days), "contract_template": _CONTRACT_TEMPLATE_TITLE,
 		"mz_subscription_plan": signup.plan, "mz_tenant": slug, "mz_tenant_url": slug + DOMAIN_SUFFIX,
-		"contact_email": signup.email, "mz_contact_mobile": signup.phone, "mz_apps_to_install": [{"app_name": a} for a in DEFAULT_APPS],
+		"contact_email": signup.email, "mz_contact_name": signup.full_name, "mz_contact_mobile": signup.phone, "mz_apps_to_install": [{"app_name": a} for a in DEFAULT_APPS],
 	}
 	rendered = get_contract_template(_CONTRACT_TEMPLATE_TITLE, contract_fields)
 	contract_fields["contract_terms"] = (
@@ -609,15 +609,35 @@ def _supersede_other_live_signups(email, keep):
 
 
 def _send_already_registered_email(doc):
+	"""Objective: get them back into the account they already have — not stuck at a form."""
+	from ai_saas.utils.jinja import mz_greeting, mz_signature
+
 	try:
+		site = frappe.db.get_value(
+			"Contract", {"contact_email": doc.email, "mz_tenant_url": ("!=", ""), "docstatus": 1},
+			"mz_tenant_url", order_by="creation desc",
+		)
+		where = (
+			f'<p>A sua conta está em <a href="https://{site}" style="color:#008000;font-weight:bold">{site}</a>. '
+			f"Se não se lembra da palavra-passe, use <em>Esqueci a palavra-passe</em> na página de entrada.</p>"
+			if site else
+			"<p>Se não se lembra do endereço ou da palavra-passe, responda a este email e ajudamos no próprio dia.</p>"
+		)
 		frappe.sendmail(
 			recipients=[doc.email],
 			subject="Já tem uma conta MozEconomia Cloud",
-			message=(f"<p>Olá {doc.full_name},</p><p>Este email já tem uma conta MozEconomia Cloud. "
-			         f"Se não se lembra do endereço ou da palavra-passe, responda a este email e ajudamos.</p>"
-			         f"<p>Se está a registar <b>outra empresa</b>, continue o registo que abriu — "
-			         f"cada empresa tem a sua conta, pelo NUIT.</p>"
-			         f"<p>Equipa MozEconomia Cloud</p>"),
+			message=(
+				'<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#020202">'
+				f"<p>{mz_greeting(doc.full_name)}</p>"
+				"<p>Este email já tem uma conta MozEconomia Cloud — não é preciso registar de novo.</p>"
+				+ where +
+				"<p>Se está a registar <strong>outra empresa</strong>, continue o registo que abriu — "
+				"cada empresa tem a sua conta, pelo NUIT.</p>"
+				'<p style="font-size:13px;color:#5a6270">Responda a este email ou fale connosco: '
+				'<a href="mailto:cloud@mozeconomia.co.mz" style="color:#008000;font-weight:bold">cloud@mozeconomia.co.mz</a>'
+				" · WhatsApp +258 87 4444 645</p>"
+				+ mz_signature() + "</div>"
+			),
 			delayed=False,
 		)
 	except Exception:

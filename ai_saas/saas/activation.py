@@ -167,6 +167,10 @@ def _activate(contract_name, token, plan=None, tax_id=None, address_line1=None,
 	# Subscription with E2's billing start, phase Active, native status recompute.
 	c.is_signed = 1
 	c.signed_on = now_datetime()
+	# The person who signs the relationship emails from here on — one setting, copied
+	# once so the name does not change under the customer if the default does.
+	if not c.get("mz_account_manager"):
+		c.mz_account_manager = frappe.db.get_single_value("MZ SaaS Settings", "default_sales_user") or None
 	c.signee = frappe.db.get_value("Customer", c.party_name, "customer_name") or c.party_name
 	c.flags.ignore_permissions = True
 	c.save(ignore_permissions=True)

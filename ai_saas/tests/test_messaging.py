@@ -144,16 +144,18 @@ class TestMessaging(FrappeTestCase):
 			frappe.delete_doc("MZ Signup", signup.name, force=True, ignore_permissions=True)
 
 	def test_welcome_message_sells_without_the_credit_card_line(self):
-		"""Dia 0 is the welcome email; the resume link is the way back in, not the point."""
+		"""Dia 0 (2026-08-28 language): we have you, here is the way back in, one reason to finish."""
 		signup = frappe.get_doc({
 			"doctype": "MZ Signup", "full_name": "Teste Boas-Vindas", "email": "welcome@example.com",
 			"company_name": "Empresa Boas-Vindas", "current_step": 2,
 		}).insert(ignore_permissions=True)
 		try:
 			notif = frappe.get_doc("Notification", "AI SaaS - Lead Nurture - Dia 0")
-			self.assertIn("Bem-vindo", notif.subject)
+			self.assertIn("continue quando quiser", notif.subject)
 			message = frappe.render_template(notif.message, {"doc": signup, "alert": notif, "comments": None})
-			self.assertIn("Bem-vindo à MozEconomia Cloud", message)
+			self.assertIn("Obrigado por começar o registo", message)
+			self.assertRegex(message, r"(Bom dia|Boa tarde|Boa noite) Teste,")
+			self.assertEqual(message.count("padding:12px 22px"), 1)     # one CTA
 			self.assertIn("Empresa Boas-Vindas", message)
 			self.assertIn("/registo?token=" + signup.resume_token, message)
 			trial_days = frappe.db.get_single_value("MZ SaaS Settings", "trial_length_days") or 14
@@ -291,3 +293,66 @@ class TestMessaging(FrappeTestCase):
 		self.assertTrue(DEFAULT_BOOKING_URL.startswith("https://calendly.com/"))
 		self.assertFalse(frappe.db.exists("Notification", "AI SaaS - Marcação Confirmada"))
 
+
+
+class TestCommunicationLanguage(FrappeTestCase):
+	"""One voice (docs/communication-copy-review.md): time-of-day greeting to a person,
+	account-manager signature, Mozambican spelling, one inbox for relationship emails."""
+
+	BILLING = {"AI SaaS - Fatura Emitida", "AI SaaS - Nota de Crédito", "AI SaaS - Recibo de Pagamento",
+	           "AI SaaS - SMS Fatura Emitida"}
+
+	def test_greeting_follows_site_hour_and_first_name(self):
+		from datetime import datetime
+		from ai_saas.utils.jinja import mz_first_name, mz_greeting
+		for hour, word in ((7, "Bom dia"), (11, "Bom dia"), (12, "Boa tarde"), (18, "Boa tarde"), (19, "Boa noite"), (23, "Boa noite")):
+			with patch("frappe.utils.now_datetime", return_value=datetime(2026, 8, 28, hour, 5)):
+				self.assertEqual(mz_greeting("Ana Maria Sitoe"), f"{word} Ana,", hour)
+				self.assertEqual(mz_greeting(None), f"{word},", hour)
+		self.assertEqual(mz_first_name("  Carlos  Matola "), "Carlos")
+		self.assertEqual(mz_first_name(""), "")
+
+	def test_signature_names_the_account_manager_or_falls_back(self):
+		from ai_saas.utils.jinja import mz_signature
+		sig = mz_signature("Administrator")
+		self.assertIn("Com boas energias,", sig)
+		self.assertIn(frappe.db.get_value("User", "Administrator", "full_name"), sig)
+		self.assertIn("Equipa MozEconomia Cloud", sig)
+		with patch("frappe.db.get_single_value", return_value=None):
+			self.assertEqual(mz_signature(None), "<p>Com boas energias,<br>Equipa MozEconomia Cloud</p>")
+
+	def test_daily_alerts_pinned_to_eight(self):
+		from ai_saas.install import DAILY_ALERTS_CRON, DAILY_ALERTS_JOB, ensure_daily_alerts_hour
+		ensure_daily_alerts_hour()
+		job = frappe.db.get_value("Scheduled Job Type", {"method": DAILY_ALERTS_JOB}, ["frequency", "cron_format"], as_dict=True)
+		self.assertEqual((job.frequency, job.cron_format), ("Cron", DAILY_ALERTS_CRON))
+
+	def test_relationship_messages_speak_to_a_person_in_one_voice(self):
+		rows = frappe.get_all("Notification", filters={"name": ("like", "AI SaaS%"), "enabled": 1},
+		                      fields=["name", "document_type", "subject", "message", "channel"])
+		for r in rows:
+			if r.name in self.BILLING:
+				continue
+			text = (r.subject or "") + (r.message or "")
+			self.assertNotRegex(text, r"\b[Ff]atura", r.name)  # Mozambican spelling
+			self.assertNotIn("{{ doc.party_name }},", text, r.name)  # never greet the company
+			if r.document_type in ("Contract", "MZ Signup") and r.channel == "Email":
+				self.assertIn("mz_greeting(", r.message, r.name)
+				self.assertNotIn("contacto@", text, r.name)
+				self.assertNotIn("<td bgcolor", r.message, r.name)  # no table buttons
+
+	def test_every_message_renders_with_greeting(self):
+		from frappe.email.doctype.notification.notification import get_context
+		docs = {
+			"Contract": frappe._dict({"doctype": "Contract", "name": "CON-X", "party_name": "Empresa X", "mz_contact_name": "Ana Sitoe",
+			                          "mz_account_manager": None, "mz_tenant_url": "x.erp.mozeconomia.co.mz", "start_date": nowdate(),
+			                          "mz_subscription_plan": TEST_PLAN, "contact_email": "a@example.com", "is_signed": 0, "mz_billing_start": nowdate()}),
+			"MZ Signup": frappe._dict({"doctype": "MZ Signup", "name": "SGN-X", "full_name": "Ana Sitoe", "email": "a@example.com",
+			                           "company_name": "Empresa X", "subdomain": "x", "resume_token": "t", "plan": TEST_PLAN}),
+		}
+		for r in frappe.get_all("Notification", filters={"name": ("like", "AI SaaS%"), "document_type": ("in", list(docs))},
+		                        fields=["name", "document_type", "message", "channel"]):
+			html = frappe.render_template(r.message, {"doc": docs[r.document_type], "alert": None, "comments": None})
+			self.assertNotIn("{{", html, r.name)
+			if r.channel == "Email":
+				self.assertRegex(html, r"(Bom dia|Boa tarde|Boa noite)( Ana)?,", r.name)
