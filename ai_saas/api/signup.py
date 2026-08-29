@@ -15,9 +15,9 @@ from frappe.utils import add_days, cint, now_datetime, nowdate, validate_email_a
 
 from ai_saas.saas.mz_address import CITY_PROVINCE
 from ai_saas.saas.party import set_customer_primaries
+from ai_saas.saas.provisioning import domain_for, domain_profile
 from ai_saas.saas.tenant_lifecycle import get_settings
 
-DOMAIN_SUFFIX = ".erp.mozeconomia.co.mz"
 STEP_FIELDS = {
 	1: ("full_name", "email", "phone", "plan"),
 	2: ("company_name", "tax_id", "tax_regime", "industry", "address", "city"),
@@ -25,7 +25,7 @@ STEP_FIELDS = {
 }
 PUBLIC_FIELDS = (
 	"full_name", "email", "phone", "plan", "company_name", "tax_id", "tax_regime",
-	"industry", "address", "city", "subdomain", "terms_accepted", "current_step", "status",
+	"industry", "address", "city", "subdomain", "terms_accepted", "current_step", "status", "mz_domain",
 )
 NUIT_RE = re.compile(r"^\d{9}$")
 
@@ -53,13 +53,13 @@ def _limit(identity=None, limit=10, seconds=60):
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
-def start(full_name, email, phone=None, plan=None):
+def start(full_name, email, phone=None, plan=None, domain=None):
 	_limit(limit=10, seconds=600)                       # per IP
 	# Every start opens a record, and a new record sends "Dia 0" (the resume link) to
 	# that address: without a per-address cap, start() would be a mail cannon aimed at
 	# anyone whose email is known. Five restarts an hour is far more than a human needs.
 	_limit(identity=f"email:{(email or '').strip().lower()}", limit=5, seconds=3600)
-	return _start(full_name, email, phone, plan)
+	return _start(full_name, email, phone, plan, domain)
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
@@ -101,8 +101,11 @@ def status(token):
 # core
 # ---------------------------------------------------------------------------
 
-def _start(full_name, email, phone=None, plan=None):
+def _start(full_name, email, phone=None, plan=None, domain=None):
 	"""Step 1 — always a new record, always a token back.
+
+	`domain` is the tenant domain the form is hard-coded to (a partner's, or MozEconomia's
+	by default); the domain's profile may fix the sector, which the form then never asks.
 
 	The form never depends on the inbox: whoever is at the keyboard continues in
 	this browser. What is never handed over is an *existing* record's token, since
@@ -123,6 +126,10 @@ def _start(full_name, email, phone=None, plan=None):
 		frappe.throw("Indique um email válido.")
 	if plan and not frappe.db.exists("Subscription Plan", plan):
 		plan = None
+	domain = domain_for(domain)
+	industry = domain_profile(domain).get("segment")
+	if industry and not frappe.db.exists("Segment Intelligence Map", industry):
+		industry = None
 
 	completed = bool(frappe.db.exists("MZ Signup", {"email": email, "status": "Complete"}))
 	# Someone hammering start() with a customer's email must not turn it into a mail flood:
@@ -135,6 +142,7 @@ def _start(full_name, email, phone=None, plan=None):
 		"doctype": "MZ Signup", "email": email, "current_step": 2, "status": "Started",
 		"full_name": full_name, "phone": (phone or "").strip(), "plan": plan,
 		"step1_completed_on": now_datetime(), "duplicate_of_account": 1 if completed else 0,
+		"mz_domain": domain, "industry": industry,
 	})
 	doc.insert(ignore_permissions=True)
 	_supersede_other_live_signups(email, doc.name)
@@ -161,6 +169,8 @@ def _update(token, step, data):
 		frappe.throw("Passo inválido.")
 
 	values = {f: data.get(f) for f in STEP_FIELDS[step] if f in data}
+	if step == 2 and domain_profile(doc.mz_domain).get("segment"):
+		values.pop("industry", None)  # fixed by the form's domain, never the lead's choice
 	_validate_step(step, values)
 	if step == 1 and values.get("email") and values["email"] != doc.email:
 		_supersede_other_live_signups(values["email"], doc.name)
@@ -505,12 +515,14 @@ def _create_documents(signup):
 
 	# Contract — unsigned, submitted: the trial begins (B1)
 	slug = signup.subdomain
+	domain = domain_for(signup.mz_domain)
 	contract_fields = {
 		"doctype": "Contract", "party_type": "Customer", "party_name": customer.name,
 		"start_date": add_days(nowdate(), s.trial_length_days), "contract_template": _CONTRACT_TEMPLATE_TITLE,
-		"mz_subscription_plan": signup.plan, "mz_tenant": slug, "mz_tenant_url": slug + DOMAIN_SUFFIX,
+		"mz_subscription_plan": signup.plan, "mz_tenant": slug, "mz_domain": domain, "mz_tenant_url": slug + domain,
 		"contact_email": signup.email, "mz_contact_name": signup.full_name, "mz_contact_mobile": signup.phone,
-		"mz_segment": signup.industry, "mz_apps_to_install": [{"app_name": a} for a in apps_for_segment(signup.industry, signup.plan)],
+		"mz_segment": signup.industry,
+		"mz_apps_to_install": [{"app_name": a} for a in apps_for_segment(signup.industry, signup.plan, domain)],
 	}
 	rendered = get_contract_template(_CONTRACT_TEMPLATE_TITLE, contract_fields)
 	contract_fields["contract_terms"] = (
@@ -584,7 +596,7 @@ def _state_payload(doc, echo_fields=True):
 	if doc.status in ("Started", "Superseded") and echo_fields:
 		payload["fields"] = {f: doc.get(f) for f in PUBLIC_FIELDS}
 	if doc.status in ("Provisioning", "Complete") and doc.subdomain:
-		payload["site_url"] = f"https://{doc.subdomain}{DOMAIN_SUFFIX}"
+		payload["site_url"] = f"https://{doc.subdomain}{domain_for(doc.mz_domain)}"
 	if doc.status == "Failed":
 		payload["message"] = ("A criação da sua conta está a demorar mais do que o esperado. "
 		                      "A nossa equipa já foi avisada e vai contactá-lo.")

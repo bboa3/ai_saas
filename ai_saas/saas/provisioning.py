@@ -20,7 +20,29 @@ def get_bench_path() -> str:
 
 def get_bench_cmd() -> str:
 	return frappe.conf.get("bench_cmd") or _DEFAULT_BENCH_CMD
-DOMAIN_SUFFIX = ".erp.mozeconomia.co.mz"
+# Tenant domains (decision 2026-08-29): the domain is a Select on Contract and MZ Signup,
+# hard-coded per signup form — MozEconomia's own or a partner's. The domain *is* the
+# partner identity: DOMAIN_PROFILES says what a domain implies for a new tenant.
+DEFAULT_DOMAIN = ".erp.mozeconomia.co.mz"
+DOMAINS = (DEFAULT_DOMAIN, ".erp.curati.co.mz", ".erp.kalenyholding.com")
+DOMAIN_PROFILES = {
+	# Curati Saúde, LDA — every tenant is a pharmacy: sector fixed, pharmacy apps on top
+	# of the segment's (healthcare first: curati_connect requires it).
+	".erp.curati.co.mz": {"segment": "Saúde & Bem-Estar", "apps": ("healthcare", "pos_next", "curati_connect")},
+	# Kaleny Holding, SU, SA — domain only.
+	".erp.kalenyholding.com": {},
+}
+ROUTE_BY_DOMAIN = {DEFAULT_DOMAIN: "/registo", ".erp.curati.co.mz": "/registo-curati",
+                   ".erp.kalenyholding.com": "/registo-kalenyholding"}
+
+
+def domain_for(value=None) -> str:
+	"""A known tenant domain, else the default."""
+	return value if value in DOMAINS else DEFAULT_DOMAIN
+
+
+def domain_profile(domain=None) -> dict:
+	return DOMAIN_PROFILES.get(domain_for(domain), {})
 MAX_ATTEMPTS = 3
 PROVISION_TIMEOUT = 1200  # 20 min — bench new-site + app installs
 WIZARD_TIMEOUT = 300
@@ -34,7 +56,7 @@ BASE_APPS = ("erpnext", "erpnext_mz")
 # runs (payroll custom fields, IRPS ruleset) — they ride on new-site, ahead of it.
 INSTALL_BEFORE_MZ = ("hrms",)
 # On the bench but never a tenant app.
-EXCLUDED_APPS = ("frappe", "ai_saas", "curati_hub", "curati_connect")
+EXCLUDED_APPS = ("frappe", "ai_saas", "curati_hub")
 # Kept for the few callers that still say "the default list": base only.
 DEFAULT_APPS = list(BASE_APPS)
 
@@ -66,16 +88,18 @@ def plan_tier(plan=None) -> str:
 	return {"basico": "Básico", "profissional": "Profissional", "premium": "Premium"}[m.group(1)] if m else ""
 
 
-def apps_for_segment(segment=None, plan=None) -> list:
-	"""BASE_APPS + the segment's Aplicações, filtered to what the bench has and to what the
-	plan allows (PLAN_GATED_APPS), in install order: INSTALL_BEFORE_MZ, erpnext, erpnext_mz,
-	then the extras as the segment lists them. No segment (or an unknown one) → base only.
-	Unknown app names are dropped here, quietly: provisioning logs what it actually installs."""
+def apps_for_segment(segment=None, plan=None, domain=None) -> list:
+	"""BASE_APPS + the segment's Aplicações + the domain profile's apps, filtered to what the
+	bench has and to what the plan allows (PLAN_GATED_APPS), in install order: INSTALL_BEFORE_MZ,
+	erpnext, erpnext_mz, then the extras as the segment lists them, then the domain's.
+	No segment (or an unknown one) → base only. Unknown app names are dropped here, quietly:
+	provisioning logs what it actually installs."""
 	wanted = list(BASE_APPS)
 	if segment and frappe.db.exists("Segment Intelligence Map", segment):
 		rows = frappe.get_all("MZ Tenant App", filters={"parenttype": "Segment Intelligence Map", "parent": segment},
 		                      fields=["app_name"], order_by="idx")
 		wanted += [r.app_name.strip() for r in rows if (r.app_name or "").strip()]
+	wanted += list(domain_profile(domain).get("apps", ()))
 	tier = plan_tier(plan)
 	wanted = [a for a in wanted if a not in PLAN_GATED_APPS or tier in PLAN_GATED_APPS[a]]
 	bench_apps = set(available_apps())
@@ -87,10 +111,10 @@ def apps_for_segment(segment=None, plan=None) -> list:
 
 
 @frappe.whitelist()
-def get_apps_for_segment(segment=None, plan=None) -> list:
-	"""Desk: the Contract form fills its Aplicações grid from the chosen segment and plan."""
+def get_apps_for_segment(segment=None, plan=None, domain=None) -> list:
+	"""Desk: the Contract form fills its Aplicações grid from the chosen segment, plan and domain."""
 	frappe.has_permission("Contract", "write", throw=True)
-	return apps_for_segment(segment, plan)
+	return apps_for_segment(segment, plan, domain)
 
 
 def split_site_and_extra_apps(apps: list) -> tuple:
@@ -160,13 +184,13 @@ def provision_tenant(contract_name: str) -> None:
 	# list means "whatever the segment says", base only when there is no segment.
 	apps = [row.app_name for row in (contract.get("mz_apps_to_install") or []) if row.app_name]
 	if not apps:
-		apps = apps_for_segment(contract.get("mz_segment"), contract.get("mz_subscription_plan"))
+		apps = apps_for_segment(contract.get("mz_segment"), contract.get("mz_subscription_plan"), contract.get("mz_domain"))
 
 	prov = frappe.get_doc({
 		"doctype": "MZ Tenant Provisioning",
 		"contract": contract_name,
 		"tenant_slug": slug,
-		"site_name": slug + DOMAIN_SUFFIX,
+		"site_name": slug + domain_for(contract.get("mz_domain")),
 		"customer_name": customer_name,
 		"contact_email": contact_email,
 		"contact_password": contact_password,

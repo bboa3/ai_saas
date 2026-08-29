@@ -22,7 +22,7 @@ class TestAppsForSegment(FrappeTestCase):
 			frappe.get_doc({"doctype": "Segment Intelligence Map", "segmento": SEG,
 			                "aplicacoes": [{"app_name": "healthcare"}, {"app_name": "hrms"}, {"app_name": "nope_app"}, {"app_name": "erpnext"}]}
 			               ).insert(ignore_permissions=True)
-		self.bench = patch.object(P, "available_apps", return_value=["erpnext", "erpnext_mz", "hrms", "healthcare", "pos_next", "payments"])
+		self.bench = patch.object(P, "available_apps", return_value=["erpnext", "erpnext_mz", "hrms", "healthcare", "pos_next", "payments", "curati_connect"])
 		self.bench.start()
 
 	def tearDown(self):
@@ -46,6 +46,22 @@ class TestAppsForSegment(FrappeTestCase):
 		self.assertEqual(P.plan_tier("Premium Mensal - MozEconomia Cloud"), "Premium")
 		self.assertEqual(P.plan_tier("_Test Basico - MozEconomia Cloud"), "Básico")
 		self.assertEqual(P.plan_tier("Ceres 12x1L - Mensal"), "")
+
+	def test_domain_profile_adds_partner_apps_after_the_segment(self):
+		"""Curati (2026-08-29): pharmacy apps on top of the segment's, healthcare before
+		curati_connect (its required_app); other domains add nothing; unknown → default."""
+		self.assertEqual(P.apps_for_segment(SEG, "Premium Mensal - MozEconomia Cloud", ".erp.curati.co.mz"),
+		                 ["hrms", "erpnext", "erpnext_mz", "healthcare", "pos_next", "curati_connect"])
+		self.assertEqual(P.apps_for_segment(None, None, ".erp.curati.co.mz"),
+		                 ["erpnext", "erpnext_mz", "healthcare", "pos_next", "curati_connect"])
+		self.assertEqual(P.apps_for_segment(SEG, None, ".erp.kalenyholding.com"), P.apps_for_segment(SEG, None))
+		self.assertEqual(P.domain_for(".erp.kalenyholding.com"), ".erp.kalenyholding.com")
+		self.assertEqual(P.domain_for("evil.com"), P.DEFAULT_DOMAIN)
+		self.assertEqual(P.domain_for(None), P.DEFAULT_DOMAIN)
+		self.assertEqual(P.domain_profile(".erp.curati.co.mz")["segment"], "Saúde & Bem-Estar")
+		self.assertTrue(frappe.db.exists("Segment Intelligence Map", "Saúde & Bem-Estar"))
+		for d in P.DOMAINS:
+			self.assertIn(d, P.ROUTE_BY_DOMAIN)
 
 	def test_every_segment_lists_hrms(self):
 		import json

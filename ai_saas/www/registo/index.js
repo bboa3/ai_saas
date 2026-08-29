@@ -52,7 +52,7 @@
     phone: function (v) { return !v || v.replace(/\D/g, "").length >= 9 ? "" : "Indique um número com pelo menos 9 dígitos."; },
     company_name: function (v) { return v.length < 2 ? "Indique o nome da empresa." : ""; },
     tax_id: function (v) { return /^\d{9}$/.test(v.replace(/\D/g, "")) ? "" : "O NUIT tem 9 dígitos."; },
-    industry: function (v) { return v ? "" : "Escolha o sector de actividade."; },
+    industry: function (v) { return v || cfg.presetIndustry ? "" : "Escolha o sector de actividade."; },
     address: function (v) { return v.length >= 5 ? "" : "Indique o endereço: rua, bairro e cidade."; },
     // Only asked when the typed address named no city we could recognise.
     city: function (v) { return $("#city-row").hidden || v.length >= 2 ? "" : "Indique a cidade."; },
@@ -91,8 +91,6 @@
     var c = $("#reg-plan-choices"); c.hidden = true; $("#reg-plan-change").setAttribute("aria-expanded", "false"); $("#reg-plan-change").textContent = "alterar";
   }); });
   function fillSummary() {
-    var end = new Date(); end.setDate(end.getDate() + (cfg.trialDays || 14));
-    $("#reg-summary-trial").textContent = (cfg.trialDays || 14) + " dias, até " + end.toLocaleDateString("pt-PT");
     if (!val("subdomain") && val("company_name")) {
       api("suggest_subdomain", { company_name: val("company_name") }).then(function (r) {
         if (r.subdomain && !val("subdomain")) { $("#subdomain").value = r.subdomain; previewDomain(); checkSubdomain(); }
@@ -103,7 +101,7 @@
   // ---- subdomain availability ---------------------------------------------
   function previewDomain() {
     var slug = val("subdomain") || "a-sua-empresa";
-    $("#reg-domain-url").textContent = "https://" + slug + ".erp.mozeconomia.co.mz";
+    $("#reg-domain-url").textContent = "https://" + slug + (cfg.domain || ".erp.mozeconomia.co.mz");
   }
   var subTimer = null;
   function checkSubdomain() {
@@ -128,7 +126,7 @@
       var fields = step === 1 ? ["full_name", "email", "phone"] : ["company_name", "tax_id", "industry", "address", "city"];
       var ok = fields.map(validate).every(Boolean); if (!ok) return;
       b.disabled = true;
-      var step1 = { full_name: val("full_name"), email: val("email"), phone: val("phone"), plan: currentPlan() };
+      var step1 = { full_name: val("full_name"), email: val("email"), phone: val("phone"), plan: currentPlan(), domain: cfg.domain || "" };
       var p = step === 1
         ? (token
             // Back to step 1 to correct something: the signup already exists — update it, never start again.
@@ -212,7 +210,7 @@
       $("#reg-restart").hidden = false;
     }
   }
-  $("#reg-restart").addEventListener("click", function () { forgetToken(); location.href = "/registo"; });
+  $("#reg-restart").addEventListener("click", function () { forgetToken(); location.href = cfg.route || "/registo"; });
 
   // ---- resume ----------------------------------------------------------------
   function restore(r) {

@@ -17,4 +17,7 @@ class MZSignup(Document):
 
 	@property
 	def resume_url(self) -> str:
-		return frappe.utils.get_url(f"/registo?token={self.resume_token}")
+		"""The form this signup started on (partner forms have their own route)."""
+		from ai_saas.saas.provisioning import ROUTE_BY_DOMAIN, domain_for
+
+		return frappe.utils.get_url(f"{ROUTE_BY_DOMAIN[domain_for(self.mz_domain)]}?token={self.resume_token}")

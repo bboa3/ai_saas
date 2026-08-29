@@ -60,8 +60,8 @@ class TestSignup(FrappeTestCase):
 			}).insert(ignore_permissions=True)
 		return _side_effect
 
-	def _walk_to_step3(self):
-		r = signup._start("Teste Signup", EMAIL, "+258841234567", PLAN)
+	def _walk_to_step3(self, domain=None):
+		r = signup._start("Teste Signup", EMAIL, "+258841234567", PLAN, domain)
 		token = r["token"]
 		signup._update(token, 2, {"company_name": COMPANY, "tax_id": "400123456", "tax_regime": "Normal (16%)",
 		                          "industry": self.industry, "address": "Av. 25 de Setembro, 1234, Bairro Central, Maputo"})
@@ -251,6 +251,7 @@ class TestSignup(FrappeTestCase):
 		con = frappe.get_doc("Contract", doc.contract)
 		self.assertEqual(con.mz_segment, self.industry)
 		self.assertEqual([r.app_name for r in con.mz_apps_to_install], apps_for_segment(self.industry, con.mz_subscription_plan))
+		self.assertEqual((con.mz_domain, con.mz_tenant_url), (".erp.mozeconomia.co.mz", SLUG + ".erp.mozeconomia.co.mz"))
 		self.assertEqual([r.app_name for r in con.mz_apps_to_install][:2] if not con.mz_apps_to_install[0].app_name == "hrms" else [r.app_name for r in con.mz_apps_to_install][1:3], ["erpnext", "erpnext_mz"])
 		opp = frappe.db.get_value("Opportunity", {"party_name": doc.lead}, ["sales_stage", "opportunity_from"], as_dict=True)
 		self.assertEqual((opp.sales_stage, opp.opportunity_from), ("Cloud - Account Created", "Lead"))
@@ -261,6 +262,31 @@ class TestSignup(FrappeTestCase):
 
 		# submitting again is a no-op (state only)
 		self.assertEqual(signup._submit(token)["state"], "progress")
+
+	@patch("ai_saas.saas.provisioning.provision_tenant")
+	def test_partner_form_fixes_domain_sector_and_apps(self, provision):
+		"""/registo-curati (2026-08-29): the domain is the form's, the sector is fixed to the
+		domain's profile (whatever the browser sends), and the pharmacy apps ride on the Contract."""
+		provision.side_effect = self._fake_provision()
+		token = self._walk_to_step3(".erp.curati.co.mz")
+		doc = frappe.get_doc("MZ Signup", {"resume_token": token})
+		self.assertEqual((doc.mz_domain, doc.industry), (".erp.curati.co.mz", "Saúde & Bem-Estar"))
+		self.assertTrue(doc.resume_url.endswith(f"/registo-curati?token={token}"))
+		r = signup._submit(token)
+		self.assertEqual(r["site_url"], f"https://{SLUG}.erp.curati.co.mz")
+		doc.reload()
+		con = frappe.get_doc("Contract", doc.contract)
+		self.assertEqual((con.mz_domain, con.mz_tenant_url, con.mz_segment), (".erp.curati.co.mz", SLUG + ".erp.curati.co.mz", "Saúde & Bem-Estar"))
+		apps = [row.app_name for row in con.mz_apps_to_install]
+		self.assertLess(apps.index("healthcare"), apps.index("curati_connect"))
+		self.assertIn("pos_next", apps)
+		self.assertEqual(frappe.db.get_value("Lead", doc.lead, "mz_segment"), "Saúde & Bem-Estar")
+
+	def test_unknown_domain_falls_back_to_the_default(self):
+		token = self._walk_to_step3("evil.com")
+		doc = frappe.get_doc("MZ Signup", {"resume_token": token})
+		self.assertEqual((doc.mz_domain, doc.industry), (".erp.mozeconomia.co.mz", self.industry))
+		self.assertTrue(doc.resume_url.endswith(f"/registo?token={token}"))
 
 	@patch("ai_saas.saas.provisioning.provision_tenant")
 	def test_duplicate_nuit_is_refused_generically(self, provision):

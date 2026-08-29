@@ -1,288 +1,296 @@
 {
-	"actions": [],
-	"autoname": "MZ-SIGNUP-.YYYY.-.#####",
-	"creation": "2026-08-24 00:00:00",
-	"doctype": "DocType",
-	"engine": "InnoDB",
-	"field_order": [
-		"section_status",
-		"status",
-		"current_step",
-		"resume_token",
-		"duplicate_of_account",
-		"column_break_s",
-		"step1_completed_on",
-		"step2_completed_on",
-		"submitted_on",
-		"section_contact",
-		"full_name",
-		"email",
-		"phone",
-		"column_break_c",
-		"plan",
-		"section_company",
-		"company_name",
-		"tax_id",
-		"tax_regime",
-		"column_break_e",
-		"industry",
-		"address",
-		"city",
-		"section_account",
-		"subdomain",
-		"terms_accepted",
-		"section_links",
-		"lead",
-		"customer",
-		"contract",
-		"provisioning",
-		"error"
-	],
-	"fields": [
-		{
-			"fieldname": "section_status",
-			"fieldtype": "Section Break",
-			"label": "Estado"
-		},
-		{
-			"fieldname": "status",
-			"fieldtype": "Select",
-			"label": "Estado",
-			"options": "Started\nSuperseded\nSubmitted\nProvisioning\nComplete\nFailed\nDuplicate",
-			"default": "Started",
-			"reqd": 1,
-			"in_list_view": 1,
-			"in_standard_filter": 1,
-			"search_index": 1
-		},
-		{
-			"fieldname": "current_step",
-			"fieldtype": "Int",
-			"label": "Passo Actual",
-			"default": "1",
-			"in_list_view": 1
-		},
-		{
-			"fieldname": "resume_token",
-			"fieldtype": "Data",
-			"label": "Token de Retoma",
-			"hidden": 1,
-			"unique": 1,
-			"read_only": 1,
-			"no_copy": 1
-		},
-		{
-			"fieldname": "duplicate_of_account",
-			"fieldtype": "Check",
-			"label": "Email já com conta",
-			"hidden": 1,
-			"read_only": 1,
-			"default": "0",
-			"description": "Marcado por start() quando o email já tem um registo Complete. O browser segue como um registo normal; a recusa só acontece em submit (A3)."
-		},
-		{
-			"fieldname": "column_break_s",
-			"fieldtype": "Column Break"
-		},
-		{
-			"fieldname": "step1_completed_on",
-			"fieldtype": "Datetime",
-			"label": "Passo 1 Concluído",
-			"read_only": 1
-		},
-		{
-			"fieldname": "step2_completed_on",
-			"fieldtype": "Datetime",
-			"label": "Passo 2 Concluído",
-			"read_only": 1
-		},
-		{
-			"fieldname": "submitted_on",
-			"fieldtype": "Datetime",
-			"label": "Submetido Em",
-			"read_only": 1
-		},
-		{
-			"fieldname": "section_contact",
-			"fieldtype": "Section Break",
-			"label": "Passo 1 · Contacto"
-		},
-		{
-			"fieldname": "full_name",
-			"fieldtype": "Data",
-			"label": "Nome",
-			"in_list_view": 1
-		},
-		{
-			"fieldname": "email",
-			"fieldtype": "Data",
-			"label": "Email",
-			"options": "Email",
-			"in_list_view": 1,
-			"search_index": 1
-		},
-		{
-			"fieldname": "phone",
-			"fieldtype": "Data",
-			"label": "WhatsApp / Telefone"
-		},
-		{
-			"fieldname": "column_break_c",
-			"fieldtype": "Column Break"
-		},
-		{
-			"fieldname": "plan",
-			"fieldtype": "Link",
-			"label": "Plano",
-			"options": "Subscription Plan"
-		},
-		{
-			"fieldname": "section_company",
-			"fieldtype": "Section Break",
-			"label": "Passo 2 · Empresa"
-		},
-		{
-			"fieldname": "company_name",
-			"fieldtype": "Data",
-			"label": "Empresa",
-			"in_list_view": 1
-		},
-		{
-			"fieldname": "tax_id",
-			"fieldtype": "Data",
-			"label": "NUIT",
-			"search_index": 1
-		},
-		{
-			"fieldname": "tax_regime",
-			"fieldtype": "Select",
-			"label": "Regime de IVA",
-			"options": "\nNormal (16%)\nRegime Especial/Reduzida\nIsento\nNão sei"
-		},
-		{
-			"fieldname": "column_break_e",
-			"fieldtype": "Column Break"
-		},
-		{
-			"fieldname": "industry",
-			"fieldtype": "Link",
-			"label": "Sector",
-			"options": "Segment Intelligence Map"
-		},
-		{
-			"fieldname": "address",
-			"fieldtype": "Small Text",
-			"label": "Endereço (como escrito no formulário)"
-		},
-		{
-			"fieldname": "city",
-			"fieldtype": "Data",
-			"label": "Cidade",
-			"read_only": 1,
-			"description": "Derivado do endereço por mz_address.parse_mz_address."
-		},
-		{
-			"fieldname": "section_account",
-			"fieldtype": "Section Break",
-			"label": "Passo 3 · Conta"
-		},
-		{
-			"fieldname": "subdomain",
-			"fieldtype": "Data",
-			"label": "Subdomínio"
-		},
-		{
-			"fieldname": "terms_accepted",
-			"fieldtype": "Check",
-			"label": "Termos Aceites",
-			"default": "0"
-		},
-		{
-			"fieldname": "section_links",
-			"fieldtype": "Section Break",
-			"label": "Documentos Criados"
-		},
-		{
-			"fieldname": "lead",
-			"fieldtype": "Link",
-			"label": "Lead",
-			"options": "Lead",
-			"read_only": 1
-		},
-		{
-			"fieldname": "customer",
-			"fieldtype": "Link",
-			"label": "Cliente",
-			"options": "Customer",
-			"read_only": 1
-		},
-		{
-			"fieldname": "contract",
-			"fieldtype": "Link",
-			"label": "Contrato",
-			"options": "Contract",
-			"read_only": 1
-		},
-		{
-			"fieldname": "provisioning",
-			"fieldtype": "Link",
-			"label": "Provisionamento",
-			"options": "MZ Tenant Provisioning",
-			"read_only": 1
-		},
-		{
-			"fieldname": "error",
-			"fieldtype": "Small Text",
-			"label": "Erro",
-			"read_only": 1
-		}
-	],
-	"links": [],
-	"modified": "2026-08-24 00:00:00",
-	"modified_by": "Administrator",
-	"module": "AI SaaS",
-	"name": "MZ Signup",
-	"owner": "Administrator",
-	"permissions": [
-		{
-			"create": 1,
-			"delete": 1,
-			"email": 1,
-			"export": 1,
-			"print": 1,
-			"read": 1,
-			"report": 1,
-			"role": "System Manager",
-			"share": 1,
-			"write": 1
-		},
-		{
-			"create": 0,
-			"delete": 0,
-			"email": 1,
-			"export": 1,
-			"print": 1,
-			"read": 1,
-			"report": 1,
-			"role": "Sales Manager",
-			"share": 0,
-			"write": 1
-		},
-		{
-			"create": 0,
-			"delete": 0,
-			"email": 1,
-			"export": 1,
-			"print": 1,
-			"read": 1,
-			"report": 1,
-			"role": "Sales User",
-			"share": 0,
-			"write": 0
-		}
-	],
-	"sort_field": "modified",
-	"sort_order": "DESC",
-	"states": [],
-	"track_changes": 1
+ "actions": [],
+ "autoname": "MZ-SIGNUP-.YYYY.-.#####",
+ "creation": "2026-08-24 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_status",
+  "status",
+  "current_step",
+  "resume_token",
+  "duplicate_of_account",
+  "column_break_s",
+  "step1_completed_on",
+  "step2_completed_on",
+  "submitted_on",
+  "section_contact",
+  "full_name",
+  "email",
+  "phone",
+  "column_break_c",
+  "plan",
+  "section_company",
+  "company_name",
+  "tax_id",
+  "tax_regime",
+  "column_break_e",
+  "industry",
+  "address",
+  "city",
+  "section_account",
+  "subdomain",
+  "mz_domain",
+  "terms_accepted",
+  "section_links",
+  "lead",
+  "customer",
+  "contract",
+  "provisioning",
+  "error"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_status",
+   "fieldtype": "Section Break",
+   "label": "Estado"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Estado",
+   "options": "Started\nSuperseded\nSubmitted\nProvisioning\nComplete\nFailed\nDuplicate",
+   "default": "Started",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "current_step",
+   "fieldtype": "Int",
+   "label": "Passo Actual",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "resume_token",
+   "fieldtype": "Data",
+   "label": "Token de Retoma",
+   "hidden": 1,
+   "unique": 1,
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "duplicate_of_account",
+   "fieldtype": "Check",
+   "label": "Email já com conta",
+   "hidden": 1,
+   "read_only": 1,
+   "default": "0",
+   "description": "Marcado por start() quando o email já tem um registo Complete. O browser segue como um registo normal; a recusa só acontece em submit (A3)."
+  },
+  {
+   "fieldname": "column_break_s",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "step1_completed_on",
+   "fieldtype": "Datetime",
+   "label": "Passo 1 Concluído",
+   "read_only": 1
+  },
+  {
+   "fieldname": "step2_completed_on",
+   "fieldtype": "Datetime",
+   "label": "Passo 2 Concluído",
+   "read_only": 1
+  },
+  {
+   "fieldname": "submitted_on",
+   "fieldtype": "Datetime",
+   "label": "Submetido Em",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_contact",
+   "fieldtype": "Section Break",
+   "label": "Passo 1 · Contacto"
+  },
+  {
+   "fieldname": "full_name",
+   "fieldtype": "Data",
+   "label": "Nome",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email",
+   "in_list_view": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "WhatsApp / Telefone"
+  },
+  {
+   "fieldname": "column_break_c",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "plan",
+   "fieldtype": "Link",
+   "label": "Plano",
+   "options": "Subscription Plan"
+  },
+  {
+   "fieldname": "section_company",
+   "fieldtype": "Section Break",
+   "label": "Passo 2 · Empresa"
+  },
+  {
+   "fieldname": "company_name",
+   "fieldtype": "Data",
+   "label": "Empresa",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "tax_id",
+   "fieldtype": "Data",
+   "label": "NUIT",
+   "search_index": 1
+  },
+  {
+   "fieldname": "tax_regime",
+   "fieldtype": "Select",
+   "label": "Regime de IVA",
+   "options": "\nNormal (16%)\nRegime Especial/Reduzida\nIsento\nNão sei"
+  },
+  {
+   "fieldname": "column_break_e",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "industry",
+   "fieldtype": "Link",
+   "label": "Sector",
+   "options": "Segment Intelligence Map"
+  },
+  {
+   "fieldname": "address",
+   "fieldtype": "Small Text",
+   "label": "Endereço (como escrito no formulário)"
+  },
+  {
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "label": "Cidade",
+   "read_only": 1,
+   "description": "Derivado do endereço por mz_address.parse_mz_address."
+  },
+  {
+   "fieldname": "section_account",
+   "fieldtype": "Section Break",
+   "label": "Passo 3 · Conta"
+  },
+  {
+   "fieldname": "subdomain",
+   "fieldtype": "Data",
+   "label": "Subdomínio"
+  },
+  {
+   "fieldname": "mz_domain",
+   "fieldtype": "Select",
+   "label": "Domínio",
+   "options": ".erp.mozeconomia.co.mz\n.erp.curati.co.mz\n.erp.kalenyholding.com",
+   "default": ".erp.mozeconomia.co.mz"
+  },
+  {
+   "fieldname": "terms_accepted",
+   "fieldtype": "Check",
+   "label": "Termos Aceites",
+   "default": "0"
+  },
+  {
+   "fieldname": "section_links",
+   "fieldtype": "Section Break",
+   "label": "Documentos Criados"
+  },
+  {
+   "fieldname": "lead",
+   "fieldtype": "Link",
+   "label": "Lead",
+   "options": "Lead",
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Cliente",
+   "options": "Customer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "contract",
+   "fieldtype": "Link",
+   "label": "Contrato",
+   "options": "Contract",
+   "read_only": 1
+  },
+  {
+   "fieldname": "provisioning",
+   "fieldtype": "Link",
+   "label": "Provisionamento",
+   "options": "MZ Tenant Provisioning",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Erro",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-29 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "AI SaaS",
+ "name": "MZ Signup",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 0,
+   "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "share": 0,
+   "write": 0
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
 }

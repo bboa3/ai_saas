@@ -13,6 +13,9 @@
     resume: {{ (resume or none) | tojson }},
     preselectedPlan: {{ (preselected_plan or "") | tojson }},
     trialDays: {{ (trial_days or 14) | tojson }},
+    domain: {{ domain | tojson }},
+    route: {{ route | tojson }},
+    presetIndustry: {{ (preset_industry or "") | tojson }},
     assetVersion: {{ (asset_version or 0) | tojson }}
   };
 </script>
@@ -20,8 +23,16 @@
 {% endblock %}
 
 {% block page_content %}
-<div class="reg">
+<div class="reg{% if theme %} reg--{{ theme }}{% endif %}">
+  {% if brand_logo %}
+  <img class="reg__logo" src="{{ brand_logo }}" alt="{{ brand }}">
+  {% elif brand_icon %}
+  <div class="reg__brand"><img src="{{ brand_icon }}" alt="">
+    <span class="reg__brand-text"><span class="reg__brand-name">{{ brand }}</span>{% if brand_tagline %}<span class="reg__brand-tagline">{{ brand_tagline }}</span>{% endif %}</span></div>
+  {% else %}
   <img class="reg__logo" src="/assets/erpnext_mz/images/logo.svg" alt="MozEconomia Cloud">
+  {% endif %}
+  {% if partner %}<p class="reg__partner">Em parceria com <strong>{{ partner }}</strong></p>{% endif %}
 
   <div class="reg__progress" id="reg-progress">
     <span class="reg__progress-text" id="reg-progress-text">Passo 1 de 3</span>
@@ -59,12 +70,14 @@
     <select id="tax_regime" name="tax_regime">
       {% for r in tax_regimes %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
     </select>
+    {% if not preset_industry %}
     <label for="industry">Sector de actividade</label>
     <select id="industry" name="industry">
       <option value="">Escolha…</option>
       {% for i in industries %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
     </select>
     <div class="reg__err" role="alert" aria-live="polite" data-for="industry"></div>
+    {% endif %}
     <label for="address">Endereço da empresa</label>
     <input id="address" name="address" type="text" autocomplete="street-address" placeholder="Av. 25 de Setembro, 1234, Bairro Central, Maputo">
     <div class="reg__err" role="alert" aria-live="polite" data-for="address"></div>
@@ -88,10 +101,10 @@
     <label for="subdomain">Subdomínio da sua conta</label>
     <div class="reg__subdomain">
       <input id="subdomain" name="subdomain" type="text" inputmode="url" autocapitalize="none" spellcheck="false" placeholder="sua-empresa">
-      <span class="reg__suffix">.erp.mozeconomia.co.mz</span>
+      <span class="reg__suffix">{{ domain }}</span>
     </div>
     <div class="reg__err" role="alert" aria-live="polite" data-for="subdomain"></div>
-    <div class="reg__domain" id="reg-domain-preview" aria-live="polite">Vai entrar em <span id="reg-domain-url">https://sua-empresa.erp.mozeconomia.co.mz</span></div>
+    <div class="reg__domain" id="reg-domain-preview" aria-live="polite">Vai entrar em <span id="reg-domain-url">https://sua-empresa{{ domain }}</span></div>
     <div class="reg__ok" id="reg-subdomain-ok" hidden>Disponível ✓</div>
         <label>Plano</label>
         <div class="reg__plan-pill" id="reg-plan-pill">

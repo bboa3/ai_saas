@@ -491,6 +491,10 @@ frappe.ui.form.on('Contract', {
 \t},
 \tmz_subscription_plan: function(frm) {
 \t\t_populate_default_apps(frm, true);
+\t},
+\tmz_domain: function(frm) {
+\t\t_update_tenant_url(frm);
+\t\t_populate_default_apps(frm, true);
 \t}
 });
 
@@ -506,8 +510,8 @@ function _attach_tenant_suffix(frm) {
 \t\t'border-bottom-right-radius': '0',
 \t\t'border-right': 'none'
 \t});
-\tvar $suffix = $('<span>', {
-\t\ttext: '.erp.mozeconomia.co.mz',
+\tfield._mz_suffix = $('<span>', {
+\t\ttext: frm.doc.mz_domain || '.erp.mozeconomia.co.mz',
 \t\tcss: {
 \t\t\tdisplay: 'inline-flex',
 \t\t\t'align-items': 'center',
@@ -523,12 +527,14 @@ function _attach_tenant_suffix(frm) {
 \t\t}
 \t});
 \t$input.parent().css('display', 'flex');
-\t$input.after($suffix);
+\t$input.after(field._mz_suffix);
 }
 
 function _update_tenant_url(frm) {
 \tvar slug = (frm.doc.mz_tenant || '').trim().toLowerCase();
-\tvar url = slug ? slug + '.erp.mozeconomia.co.mz' : '';
+\tvar url = slug ? slug + (frm.doc.mz_domain || '.erp.mozeconomia.co.mz') : '';
+\tvar field = frm.fields_dict['mz_tenant'];
+\tif (field && field._mz_suffix) field._mz_suffix.text(frm.doc.mz_domain || '.erp.mozeconomia.co.mz');
 \tif (frm.doc.mz_tenant_url !== url) {
 \t\tfrm.set_value('mz_tenant_url', url);
 \t}
@@ -542,7 +548,7 @@ function _populate_default_apps(frm, force) {
 \tif (!force && !(frm.doc.__islocal || !(frm.doc.mz_apps_to_install || []).length)) return;
 \tfrappe.call({
 \t\tmethod: 'ai_saas.saas.provisioning.get_apps_for_segment',
-\t\targs: { segment: frm.doc.mz_segment || null, plan: frm.doc.mz_subscription_plan || null },
+\t\targs: { segment: frm.doc.mz_segment || null, plan: frm.doc.mz_subscription_plan || null, domain: frm.doc.mz_domain || null },
 \t\tcallback: function(r) {
 \t\t\tvar rows = (r.message || []).map(function(app) { return { app_name: app }; });
 \t\t\tfrm.set_value('mz_apps_to_install', rows);
