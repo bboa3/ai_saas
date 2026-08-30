@@ -2,8 +2,9 @@
 
 Three idempotent operations — suspend, reactivate, archive — plus the daily job
 that applies the two switch-off rules and the archive rule. The engine reads
-dates, never counts days, and touches ONLY contracts with a non-empty
-mz_account_phase (B2): a commercial contract with an empty phase is invisible.
+dates, never counts days, and sees ONLY contracts with a provisioning record:
+the account's phase is derived (account_phase) from the signature and the site's
+status — a commercial contract without a site is invisible.
 
 Two switches in MZ SaaS Settings arm the daily job — auto_suspend (reversible)
 and auto_archive (irreversible) — both off by default and when never configured.
@@ -23,6 +24,7 @@ import time
 import frappe
 from frappe.utils import add_days, add_to_date, cint, getdate, now_datetime, nowdate
 
+from ai_saas.saas import crm
 from ai_saas.saas.alerts import notify_ops
 from ai_saas.saas.lifecycle_mail import send_lifecycle_email
 from ai_saas.saas.provisioning import (
@@ -53,6 +55,7 @@ def get_settings():
 			"auto_archive",
 			"overdue_days_to_suspend",
 			"grace_days_to_archive",
+			"archive_retention_days",
 			"prebilling_reminder_days",
 			"overdue_followup_days",
 			"ops_alert_recipients",
@@ -73,6 +76,7 @@ def get_settings():
 		auto_archive=cint(raw.auto_archive),
 		overdue_days_to_suspend=cint(raw.overdue_days_to_suspend) or 33,
 		grace_days_to_archive=cint(raw.grace_days_to_archive) or 30,
+		archive_retention_days=cint(raw.archive_retention_days) or 180,
 		prebilling_reminder_days=cint(raw.prebilling_reminder_days) or 4,
 		overdue_followup_days=cint(raw.overdue_followup_days) or 7,
 		ops_alert_recipients=[
@@ -109,8 +113,10 @@ def suspend(contract_name, reason="", cause="manual", invoice=None):
 		prov.name,
 		{"status": "Suspended", "suspended_on": now_datetime()},
 	)
-	_set_phase(contract_name, "Suspended")
 	_log(prov, f"Suspenso. Motivo: {reason}")
+	crm.report_for_contract(
+		contract_name, crm.STAGE_TRIAL_EXPIRED if cause == "trial" else crm.STAGE_SUSPENDED
+	)
 	send_lifecycle_email("suspended", contract_name, cause=cause, invoice=invoice or "")
 
 
@@ -147,15 +153,15 @@ def reactivate(contract_name, new_start_date=None, force=False, notify=True):
 	frappe.db.set_value(
 		"MZ Tenant Provisioning", prov.name, {"status": "Active", "suspended_on": None}
 	)
-	_set_phase(contract_name, "Trial" if is_trial else "Active")
 	_log(prov, f"Reactivado. Nova data de fim do trial: {new_start_date or '—'}")
+	crm.report_for_contract(contract_name, crm.STAGE_ACCOUNT_CREATED if is_trial else crm.STAGE_ACTIVATED)
 	if notify:
 		send_lifecycle_email("reactivated", contract_name, new_trial_end=new_start_date or "")
 
 
 def archive(contract_name):
 	"""Full backup, verify, destroy. The one irreversible act — triple-gated:
-	the phase must be Suspended, the grace period elapsed (checked by the caller
+	the site must be Suspended, the grace period elapsed (checked by the caller
 	— the daily rule), and the backup verified before drop-site runs."""
 	prov = _get_prov(contract_name)
 	if prov.status == "Archived":
@@ -164,9 +170,6 @@ def archive(contract_name):
 		frappe.throw(
 			f"Só um site suspenso pode ser arquivado — {prov.site_name} está '{prov.status}'."
 		)
-	if frappe.db.get_value("Contract", contract_name, "mz_account_phase") != "Suspended":
-		frappe.throw(f"A fase do contrato {contract_name} não é 'Suspended' — arquivo recusado.")
-
 	site = prov.site_name
 	bench = get_bench_cmd()
 
@@ -191,8 +194,8 @@ def archive(contract_name):
 	frappe.db.set_value(
 		"MZ Tenant Provisioning", prov.name, {"status": "Archived", "backup_path": archived_path}
 	)
-	_set_phase(contract_name, "Closed")
 	_log(prov, f"Arquivado. Backup em: {archived_path}")
+	crm.report_for_contract(contract_name, crm.STAGE_CLOSED, status="Lost")
 	send_lifecycle_email("archived", contract_name)
 
 
@@ -202,8 +205,8 @@ def archive(contract_name):
 
 def process_lifecycle():
 	"""Daily: the two switch-off rules and the archive rule. Reads dates only,
-	touches only contracts with a non-empty mz_account_phase. Each rule executes
-	only when its switch is on; otherwise it is reported in the digest."""
+	sees only contracts with a live site. Each rule executes only when its switch
+	is on; otherwise it is reported in the digest."""
 	settings = get_settings()
 	actions = []
 
@@ -211,22 +214,16 @@ def process_lifecycle():
 		actions.append(what if armed else f"[só observação] {what}")
 
 	# Rule 1 — trial ended without converting: start_date arrived, still unsigned.
-	expired_trials = frappe.get_all(
-		"Contract",
-		filters={
-			"docstatus": 1,
-			"is_signed": 0,
-			"mz_account_phase": "Trial",
-			"start_date": ("<=", add_days(nowdate(), -1)),
-		},
+	expired_trials = live_trials(
 		fields=["name", "party_name", "start_date"],
+		extra_conditions="AND c.start_date <= %(yesterday)s",
+		values={"yesterday": add_days(nowdate(), -1)},
 	)
 	for c in expired_trials:
 		_report(f"suspender (trial expirou em {c.start_date}): {c.name} — {c.party_name}", settings.auto_suspend)
 		if settings.auto_suspend:
-			_attempt(actions, c.name, lambda: (
-				suspend(c.name, reason=f"Trial terminou em {c.start_date} sem assinatura", cause="trial"),
-				_mark_opportunity_lost(c),
+			_attempt(actions, c.name, lambda: suspend(
+				c.name, reason=f"Trial terminou em {c.start_date} sem assinatura", cause="trial"
 			))
 
 	# Rule 2 — an invoice unpaid `overdue_days_to_suspend` past its due date.
@@ -237,11 +234,13 @@ def process_lifecycle():
 		       c.name AS contract
 		FROM `tabSales Invoice` si
 		JOIN `tabContract` c ON c.mz_linked_subscription = si.subscription
+		JOIN `tabMZ Tenant Provisioning` p ON p.contract = c.name
 		WHERE si.subscription IS NOT NULL
 			AND si.outstanding_amount > 0
 			AND si.docstatus = 1
 			AND si.due_date <= %(cutoff)s
-			AND c.mz_account_phase = 'Active'
+			AND c.is_signed = 1
+			AND p.status = 'Active'
 		""",
 		{"cutoff": cutoff},
 		as_dict=True,
@@ -267,8 +266,8 @@ def process_lifecycle():
 		fields=["name", "contract", "site_name", "suspended_on"],
 	)
 	for prov in to_archive:
-		if frappe.db.get_value("Contract", prov.contract, "mz_account_phase") != "Suspended":
-			continue  # e.g. reactivated or signed since the record was fetched
+		if frappe.db.get_value("MZ Tenant Provisioning", prov.name, "status") != "Suspended":
+			continue  # e.g. reactivated since the record was fetched
 		_report(f"arquivar (suspenso desde {prov.suspended_on}): {prov.site_name} — {prov.contract}", settings.auto_archive)
 		if settings.auto_archive:
 			_attempt(actions, prov.contract, lambda: archive(prov.contract))
@@ -290,16 +289,6 @@ def _attempt(actions, contract_name, fn):
 		frappe.log_error(title=f"AI SaaS Lifecycle: {contract_name}", message=frappe.get_traceback())
 
 
-def _mark_opportunity_lost(contract_row):
-	"""F6: an expired trial marks its Opportunity Lost. Legacy contracts may have
-	none — skip silently. Customer and data stay: they are G3's raw material."""
-	from ai_saas.saas.crm import find_opportunity
-
-	opp = find_opportunity(contract_row.name)
-	if opp:
-		frappe.db.set_value("Opportunity", opp, "status", "Lost")
-
-
 def _send_digest(settings, actions):
 	if not actions:
 		return
@@ -316,6 +305,44 @@ def _send_digest(settings, actions):
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+
+def account_phase(contract_name) -> str:
+	"""The account's phase, derived — never stored. Closed / Suspended follow the site,
+	Active / Trial follow the signature; "" for a contract without a site."""
+	prov_status = frappe.db.get_value("MZ Tenant Provisioning", {"contract": contract_name}, "status")
+	if not prov_status:
+		return ""
+	if prov_status == "Archived":
+		return "Closed"
+	if prov_status == "Suspended":
+		return "Suspended"
+	return "Active" if frappe.db.get_value("Contract", contract_name, "is_signed") else "Trial"
+
+
+def live_trials(fields=("name",), names=None, extra_conditions="", values=None):
+	"""Submitted, unsigned contracts whose site is up — the trials the engine, the
+	usage probe and the signup ceiling all mean. `names` restricts to those contracts."""
+	values = dict(values or {})
+	where = ""
+	if names is not None:
+		if not names:
+			return []
+		values["names"] = tuple(names)
+		where = "AND c.name IN %(names)s"
+	cols = ", ".join(f"c.`{f}`" for f in fields)
+	return frappe.db.sql(
+		f"""
+		SELECT {cols}
+		FROM `tabContract` c
+		JOIN `tabMZ Tenant Provisioning` p ON p.contract = c.name
+		WHERE c.docstatus = 1 AND c.is_signed = 0 AND p.status = 'Active'
+		{where} {extra_conditions}
+		ORDER BY c.creation
+		""",
+		values,
+		as_dict=True,
+	)
+
 
 def _has_overdue_invoice(contract_name) -> bool:
 	sub = frappe.db.get_value("Contract", contract_name, "mz_linked_subscription")
@@ -347,10 +374,6 @@ def _run(prov, cmd, step, timeout):
 		run_cmd(cmd, step, prov, timeout)
 	finally:
 		frappe.db.set_value("MZ Tenant Provisioning", prov.name, "log", prov.log, update_modified=False)
-
-
-def _set_phase(contract_name, phase):
-	frappe.db.set_value("Contract", contract_name, "mz_account_phase", phase, update_modified=False)
 
 
 def _log(prov, message):

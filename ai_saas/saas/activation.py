@@ -36,6 +36,12 @@ def get_activation_url(contract_name: str) -> str:
 	return get_url(f"/activar?contract={contract_name}&token={get_activation_token(contract_name)}")
 
 
+def get_reactivation_url(contract_name: str) -> str:
+	"""The page where a suspended or closed account asks to come back (G2/G3) — same
+	token as activation, so any email we ever sent still opens it."""
+	return get_url(f"/reactivar?contract={contract_name}&token={get_activation_token(contract_name)}")
+
+
 def is_valid_token(contract_name: str, token: str) -> bool:
 	return bool(contract_name) and validate_document_hash(DOCTYPE, contract_name, token or "")
 
@@ -71,7 +77,9 @@ def get_activation_context(contract_name: str, token: str) -> dict:
 	ctx.contract = c
 	ctx.token = token
 	ctx.already_signed = bool(c.is_signed)
-	ctx.phase = c.get("mz_account_phase") or ""
+	from ai_saas.saas.tenant_lifecycle import account_phase
+
+	ctx.phase = account_phase(c.name)
 	ctx.plans = cloud_plans()
 	ctx.customer = frappe.db.get_value(
 		"Customer", c.party_name, ["customer_name", "tax_id", "email_id", "mobile_no"], as_dict=True
@@ -135,7 +143,7 @@ def _activate(contract_name, token, plan=None, tax_id=None, address_line1=None,
 	# Never sign — and start billing — a contract with no usable site: archived,
 	# never provisioned, or still failing. Old activation links outlive all of those.
 	prov_status = frappe.db.get_value("MZ Tenant Provisioning", {"contract": c.name}, "status")
-	if c.get("mz_account_phase") == "Closed" or prov_status not in ("Active", "Suspended"):
+	if prov_status not in ("Active", "Suspended"):
 		frappe.throw(
 			"Esta conta já não pode ser activada por esta ligação. "
 			"Contacte-nos em cloud@mozeconomia.co.mz e repomos o acesso."
@@ -158,10 +166,11 @@ def _activate(contract_name, token, plan=None, tax_id=None, address_line1=None,
 		frappe.db.set_value("Customer", c.party_name, "tax_id", nuit)
 	_upsert_billing_address(c.party_name, address_line1, address_line2, city)
 	if contact_phone and contact_phone.strip():
-		frappe.db.set_value("Customer", c.party_name, "mobile_no", contact_phone.strip())
-		c.mz_contact_mobile = contact_phone.strip()
+		# The Contact is the source of the customer's phone; Customer.mobile_no and the
+		# Contract's mirror follow it through ERPNext's own fetch on save.
+		_set_primary_mobile(c.party_name, contact_phone.strip())
 
-	was_suspended = c.get("mz_account_phase") == "Suspended"
+	was_suspended = prov_status == "Suspended"
 
 	# The signature — through the save path, so B1's on_contract_signed fires:
 	# Subscription with E2's billing start, phase Active, native status recompute.
@@ -203,6 +212,18 @@ def _activate(contract_name, token, plan=None, tax_id=None, address_line1=None,
 		# for any caller that needs to parse it.
 		"billing_start_display": frappe.utils.formatdate(billing_start) if billing_start else "",
 	}
+
+
+def _set_primary_mobile(customer_name, mobile):
+	contact = frappe.db.get_value("Customer", customer_name, "customer_primary_contact")
+	if contact:
+		doc = frappe.get_doc("Contact", contact)
+		for row in doc.phone_nos:
+			row.is_primary_mobile_no = 0
+		doc.append("phone_nos", {"phone": mobile, "is_primary_mobile_no": 1})
+		doc.flags.ignore_permissions = True
+		doc.save()
+	frappe.db.set_value("Customer", customer_name, "mobile_no", mobile)
 
 
 def _upsert_billing_address(customer_name, line1, line2, city):

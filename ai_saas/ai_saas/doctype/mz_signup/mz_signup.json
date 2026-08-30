@@ -34,6 +34,7 @@
   "terms_accepted",
   "section_links",
   "lead",
+  "opportunity",
   "customer",
   "contract",
   "provisioning",
@@ -218,6 +219,13 @@
    "read_only": 1
   },
   {
+   "fieldname": "opportunity",
+   "fieldtype": "Link",
+   "label": "Oportunidade",
+   "options": "Opportunity",
+   "read_only": 1
+  },
+  {
    "fieldname": "customer",
    "fieldtype": "Link",
    "label": "Cliente",
@@ -246,7 +254,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-29 12:00:00.000000",
+ "modified": "2026-08-30 10:00:00",
  "modified_by": "Administrator",
  "module": "AI SaaS",
  "name": "MZ Signup",

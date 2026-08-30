@@ -79,7 +79,6 @@ class TestContractLifecycle(FrappeTestCase):
 
 		provision.assert_called_once_with(doc.name)
 		setup_sub.assert_not_called()
-		self.assertEqual(frappe.db.get_value("Contract", doc.name, "mz_account_phase"), "Trial")
 		self.assertEqual(frappe.db.get_value("Contract", doc.name, "status"), "Unsigned")
 
 	@patch("ai_saas.saas.contract_lifecycle._setup_subscription")
@@ -90,7 +89,6 @@ class TestContractLifecycle(FrappeTestCase):
 
 		provision.assert_called_once_with(doc.name)
 		setup_sub.assert_called_once()
-		self.assertEqual(frappe.db.get_value("Contract", doc.name, "mz_account_phase"), "Active")
 
 	@patch("ai_saas.saas.contract_lifecycle._setup_subscription")
 	@patch("ai_saas.saas.provisioning.provision_tenant")
@@ -104,7 +102,6 @@ class TestContractLifecycle(FrappeTestCase):
 		doc.save(ignore_permissions=True)
 
 		setup_sub.assert_called_once()
-		self.assertEqual(frappe.db.get_value("Contract", doc.name, "mz_account_phase"), "Active")
 
 		# A later unrelated update-after-submit must not create a second subscription.
 		doc.reload()
@@ -115,11 +112,35 @@ class TestContractLifecycle(FrappeTestCase):
 	@patch("ai_saas.saas.contract_lifecycle._setup_subscription")
 	@patch("ai_saas.saas.provisioning.provision_tenant")
 	def test_no_tenant_means_no_provisioning_and_no_phase(self, provision, setup_sub):
+		from ai_saas.saas.tenant_lifecycle import account_phase
+
 		doc = self._make_contract(is_signed=0, tenant="")
 		doc.submit()
 
 		provision.assert_not_called()
-		self.assertFalse(frappe.db.get_value("Contract", doc.name, "mz_account_phase"))
+		self.assertEqual(account_phase(doc.name), "")  # no site, no phase: invisible to the engine
+
+	@patch("ai_saas.saas.contract_lifecycle._setup_subscription")
+	@patch("ai_saas.saas.provisioning.provision_tenant")
+	def test_signature_converts_the_opportunity(self, provision, setup_sub):
+		"""The Opportunity is the funnel's ledger: the signature closes it as won."""
+		opp = frappe.get_doc({
+			"doctype": "Opportunity", "opportunity_from": "Customer", "party_name": TEST_CUSTOMER,
+			"company": frappe.db.get_single_value("Global Defaults", "default_company"),
+			"sales_stage": "Cloud - Account Created",
+		}).insert(ignore_permissions=True)
+		try:
+			doc = self._make_contract(is_signed=0)
+			doc.submit()
+			self.assertEqual(frappe.db.get_value("Opportunity", opp.name, "sales_stage"), "Cloud - Account Created")
+			doc.reload()
+			doc.is_signed = 1
+			doc.save(ignore_permissions=True)
+			o = frappe.db.get_value("Opportunity", opp.name, ["sales_stage", "status", "mz_stage_since"], as_dict=True)
+			self.assertEqual((o.sales_stage, o.status), ("Cloud - Activated", "Converted"))
+			self.assertTrue(o.mz_stage_since)
+		finally:
+			frappe.delete_doc("Opportunity", opp.name, force=True, ignore_permissions=True)
 
 	# ---- B3: the plan guard ----------------------------------------------------
 

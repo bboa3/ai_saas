@@ -14,7 +14,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, nowdate
 
-from ai_saas.saas import tenant_lifecycle
+from ai_saas.saas import crm, tenant_lifecycle
 
 TEST_CUSTOMER = "_Test Cliente AI SaaS F"
 TEST_PLAN = "Premium Mensal - MozEconomia Cloud"
@@ -36,11 +36,29 @@ class TestTenantLifecycle(FrappeTestCase):
 		self._contracts = []
 		self._provs = []
 		self._reviews = []
+		self._opps = []
 		frappe.db.commit()
+
+	def _make_opportunity(self, contract_name):
+		"""The Opportunity behind a contract, the way crm.find_opportunity resolves it."""
+		opp = frappe.get_doc({
+			"doctype": "Opportunity", "opportunity_from": "Customer", "party_name": TEST_CUSTOMER,
+			"company": frappe.db.get_single_value("Global Defaults", "default_company"),
+			"sales_stage": "Cloud - Account Created", "contact_email": "cliente@example.com",
+		}).insert(ignore_permissions=True)
+		self._opps.append(opp.name)
+		return opp.name
+
+	def _stage(self, opp):
+		return frappe.db.get_value("Opportunity", opp, ["sales_stage", "status"], as_dict=True)
 
 	def tearDown(self):
 		for name in self._reviews:
+			for t in frappe.get_all("ToDo", {"reference_type": "MZ Overdue Review", "reference_name": name}, pluck="name"):
+				frappe.delete_doc("ToDo", t, force=True, ignore_permissions=True)
 			frappe.delete_doc("MZ Overdue Review", name, force=True, ignore_missing=True, ignore_permissions=True)
+		for name in self._opps:
+			frappe.delete_doc("Opportunity", name, force=True, ignore_missing=True, ignore_permissions=True)
 		for name in self._provs:
 			frappe.delete_doc("MZ Tenant Provisioning", name, force=True, ignore_missing=True, ignore_permissions=True)
 		for name in self._contracts:
@@ -96,13 +114,13 @@ class TestTenantLifecycle(FrappeTestCase):
 	@patch("ai_saas.saas.tenant_lifecycle.run_cmd")
 	def test_reactivate_billing_customer_needs_settled_debt_or_force(self, run_cmd):
 		doc, prov = self._make_trial(start_date=add_days(nowdate(), -60))
-		frappe.db.set_value("Contract", doc.name, {"is_signed": 1, "mz_account_phase": "Active"}, update_modified=False)
+		frappe.db.set_value("Contract", doc.name, "is_signed", 1, update_modified=False)
 		tenant_lifecycle.suspend(doc.name)
 		with patch("ai_saas.saas.tenant_lifecycle._has_overdue_invoice", return_value=True):
 			with self.assertRaises(frappe.ValidationError):
 				tenant_lifecycle.reactivate(doc.name)
 			tenant_lifecycle.reactivate(doc.name, force=True)
-		self.assertEqual(frappe.db.get_value("Contract", doc.name, "mz_account_phase"), "Active")
+		self.assertEqual(tenant_lifecycle.account_phase(doc.name), "Active")
 
 	# ---- F3: the engine, in dry-run ---------------------------------------------
 
@@ -136,9 +154,7 @@ class TestTenantLifecycle(FrappeTestCase):
 		self.assertFalse(any(plain.name in a for a in actions))
 		# not armed: executed nothing
 		run_cmd.assert_not_called()
-		self.assertEqual(
-			frappe.db.get_value("Contract", expired.name, "mz_account_phase"), "Trial"
-		)
+		self.assertEqual(tenant_lifecycle.account_phase(expired.name), "Trial")
 
 	# ---- F2: suspend / reactivate / archive gates -------------------------------
 
@@ -152,7 +168,7 @@ class TestTenantLifecycle(FrappeTestCase):
 		prov.reload()
 		self.assertEqual(prov.status, "Suspended")
 		self.assertTrue(prov.suspended_on)
-		self.assertEqual(frappe.db.get_value("Contract", doc.name, "mz_account_phase"), "Suspended")
+		self.assertEqual(tenant_lifecycle.account_phase(doc.name), "Suspended")
 		self.assertIn("set-maintenance-mode", run_cmd.call_args[0][0])
 
 		# Idempotent: a second suspend is a no-op.
@@ -171,8 +187,78 @@ class TestTenantLifecycle(FrappeTestCase):
 		prov.reload()
 		self.assertEqual(prov.status, "Active")
 		self.assertFalse(prov.suspended_on)
-		self.assertEqual(frappe.db.get_value("Contract", doc.name, "mz_account_phase"), "Trial")
+		self.assertEqual(tenant_lifecycle.account_phase(doc.name), "Trial")
 		self.assertEqual(str(frappe.db.get_value("Contract", doc.name, "start_date")), str(new_end))
+
+	@patch("ai_saas.saas.tenant_lifecycle.run_cmd")
+	def test_every_act_reports_to_the_opportunity(self, run_cmd):
+		"""The Opportunity is the ledger: expiry, overdue, reactivation and closure each
+		land on it as a stage — and an expired trial stays Open, so G2 can still talk to it."""
+		doc, prov = self._make_trial(start_date=add_days(nowdate(), -1))
+		opp = self._make_opportunity(doc.name)
+
+		tenant_lifecycle.suspend(doc.name, cause="trial")
+		self.assertEqual(tuple(self._stage(opp).values()), ("Cloud - Trial Expired", "Open"))
+		since = frappe.db.get_value("Opportunity", opp, "mz_stage_since")
+		self.assertTrue(since)
+
+		tenant_lifecycle.reactivate(doc.name, new_start_date=add_days(nowdate(), 7))
+		self.assertEqual(self._stage(opp).sales_stage, "Cloud - Account Created")
+
+		tenant_lifecycle.suspend(doc.name, cause="overdue")
+		self.assertEqual(self._stage(opp).sales_stage, "Cloud - Suspended")
+
+		with patch("ai_saas.saas.tenant_lifecycle._has_recent_backup", return_value=True), \
+		     patch("ai_saas.saas.tenant_lifecycle.os.path.isdir", return_value=True), \
+		     patch("ai_saas.saas.tenant_lifecycle.get_db_root_password", return_value="x"):
+			tenant_lifecycle.archive(doc.name)
+		self.assertEqual(tuple(self._stage(opp).values()), ("Cloud - Closed", "Lost"))
+
+	@patch("ai_saas.saas.tenant_lifecycle.run_cmd")
+	def test_a_converted_opportunity_still_reports(self, run_cmd):
+		"""Signature marks the Opportunity Converted; a paying account is still suspended
+		for non-payment and archived, and both must land on that same record."""
+		doc, prov = self._make_trial(start_date=add_days(nowdate(), -1))
+		opp = self._make_opportunity(doc.name)
+		crm.report(opp, crm.STAGE_ACTIVATED, status="Converted")
+		frappe.db.set_value("Contract", doc.name, "is_signed", 1, update_modified=False)
+
+		tenant_lifecycle.suspend(doc.name, cause="overdue")
+		self.assertEqual(tuple(self._stage(opp).values()), ("Cloud - Suspended", "Converted"))
+		tenant_lifecycle.reactivate(doc.name, force=True)
+		self.assertEqual(self._stage(opp).sales_stage, "Cloud - Activated")
+
+	@patch("ai_saas.saas.tenant_lifecycle.run_cmd")
+	def test_customer_request_lands_as_a_review(self, run_cmd):
+		from ai_saas.api import reactivation
+		from ai_saas.saas.activation import get_activation_token
+
+		doc, prov = self._make_trial(start_date=add_days(nowdate(), -1))
+		token = get_activation_token(doc.name)
+
+		# Nothing to reactivate while the site is up.
+		self.assertEqual(reactivation._request(doc.name, token)["state"], "active")
+
+		tenant_lifecycle.suspend(doc.name, cause="trial")
+		with self.assertRaises(frappe.PermissionError):
+			reactivation._request(doc.name, "not-the-token")
+
+		with patch("ai_saas.api.reactivation.notify_ops") as ops:
+			r = reactivation._request(doc.name, token, "já pagámos")
+		self._reviews.append(r["review"])
+		self.assertEqual(r["state"], "requested")
+		review = frappe.get_doc("MZ Overdue Review", r["review"])
+		self.assertEqual((review.contract, review.customer, review.origin, review.review_status),
+		                 (doc.name, TEST_CUSTOMER, "Pedido do Cliente", "Pending Review"))
+		self.assertIn("já pagámos", review.notes)
+		ops.assert_called_once()
+
+		# A second request appends to the open review instead of opening another.
+		with patch("ai_saas.api.reactivation.notify_ops"):
+			r2 = reactivation._request(doc.name, token, "segunda vez")
+		self.assertEqual(r2["review"], r["review"])
+		self.assertIn("segunda vez", frappe.db.get_value("MZ Overdue Review", r["review"], "notes"))
+		self.assertEqual(frappe.db.count("MZ Overdue Review", {"contract": doc.name}), 1)
 
 	@patch("ai_saas.saas.tenant_lifecycle.run_cmd")
 	def test_archive_refuses_unsuspended(self, run_cmd):
@@ -182,13 +268,20 @@ class TestTenantLifecycle(FrappeTestCase):
 		run_cmd.assert_not_called()
 
 	@patch("ai_saas.saas.tenant_lifecycle.run_cmd")
-	def test_engine_survives_a_contract_without_a_site(self, run_cmd):
-		"""Rule 1 selects an expired trial whose provisioning never happened; the run
-		must record the failure and still process the next contract."""
+	def test_engine_survives_a_failing_site(self, run_cmd):
+		"""One site whose bench command fails must not abort the run for the others,
+		and a trial whose provisioning never happened is simply not a trial to the engine."""
 		broken, prov_b = self._make_trial(start_date=add_days(nowdate(), -3), slug="f3-broken")
-		frappe.delete_doc("MZ Tenant Provisioning", prov_b.name, force=True, ignore_permissions=True)
-		self._provs.remove(prov_b.name)
 		good, _ = self._make_trial(start_date=add_days(nowdate(), -3), slug="f3-good")
+		unprovisioned, prov_u = self._make_trial(start_date=add_days(nowdate(), -3), slug="f3-nosite")
+		frappe.delete_doc("MZ Tenant Provisioning", prov_u.name, force=True, ignore_permissions=True)
+		self._provs.remove(prov_u.name)
+		frappe.db.commit()  # the failing site's rollback below must not resurrect this row
+
+		def _boom(cmd, step, prov, timeout):
+			if prov_b.site_name in cmd:
+				raise Exception("bench exploded")
+		run_cmd.side_effect = _boom
 
 		real = tenant_lifecycle.get_settings()
 		real.update({"auto_suspend": 1, "auto_archive": 0, "ops_alert_recipients": []})
@@ -196,8 +289,10 @@ class TestTenantLifecycle(FrappeTestCase):
 			actions = tenant_lifecycle.process_lifecycle()
 
 		self.assertTrue(any(a.startswith("FALHOU " + broken.name) for a in actions))
-		self.assertEqual(frappe.db.get_value("Contract", good.name, "mz_account_phase"), "Suspended")
-		self.assertEqual(frappe.db.get_value("Contract", broken.name, "mz_account_phase"), "Trial")
+		self.assertEqual(tenant_lifecycle.account_phase(good.name), "Suspended")
+		self.assertEqual(tenant_lifecycle.account_phase(broken.name), "Trial")
+		self.assertFalse(any(unprovisioned.name in a for a in actions))
+		self.assertEqual(tenant_lifecycle.account_phase(unprovisioned.name), "")
 
 	@patch("ai_saas.saas.tenant_lifecycle.run_cmd")
 	def test_archive_after_grace(self, run_cmd):
@@ -227,7 +322,7 @@ class TestTenantLifecycle(FrappeTestCase):
 		self.assertTrue(any(a.startswith("[só observação] arquivar") and doc2.name in a for a in actions))
 		self.assertEqual(frappe.db.get_value("MZ Tenant Provisioning", prov2.name, "status"), "Suspended")
 		self.assertTrue(prov.backup_path.endswith(prov.site_name))
-		self.assertEqual(frappe.db.get_value("Contract", doc.name, "mz_account_phase"), "Closed")
+		self.assertEqual(tenant_lifecycle.account_phase(doc.name), "Closed")
 		cmds = [c.args[0] for c in run_cmd.call_args_list]
 		self.assertTrue(any("backup" in c for c in cmds) and any("drop-site" in c for c in cmds))
 		# Archive is final: a second run does nothing to it.

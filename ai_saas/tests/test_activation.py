@@ -70,9 +70,8 @@ class TestActivation(FrappeTestCase):
 		return doc
 
 	def test_activation_refuses_contracts_without_a_usable_site(self):
-		for phase, prov_status in (("Closed", "Archived"), ("Trial", "Failed"), ("Trial", "Queued")):
+		for prov_status in ("Archived", "Failed", "Queued"):
 			doc = self._make_trial(add_days(nowdate(), 14), prov_status=prov_status)
-			frappe.db.set_value("Contract", doc.name, "mz_account_phase", phase, update_modified=False)
 			with self.assertRaises(frappe.ValidationError):
 				activation._activate(doc.name, activation.get_activation_token(doc.name), accept_terms=1)
 			self.assertEqual(frappe.db.get_value("Contract", doc.name, "is_signed"), 0)
@@ -128,12 +127,13 @@ class TestActivation(FrappeTestCase):
 
 		c = frappe.db.get_value(
 			"Contract", doc.name,
-			["is_signed", "status", "mz_account_phase", "mz_subscription_plan", "mz_linked_subscription", "mz_billing_start", "signed_on"],
+			["is_signed", "status", "mz_subscription_plan", "mz_linked_subscription", "mz_billing_start", "signed_on"],
 			as_dict=True,
 		)
 		self.assertEqual(c.is_signed, 1)
 		self.assertEqual(c.status, "Active")                 # native recompute ran -> save path
-		self.assertEqual(c.mz_account_phase, "Active")       # B1's chain ran
+		from ai_saas.saas.tenant_lifecycle import account_phase
+		self.assertEqual(account_phase(doc.name), "Active")  # derived: signed + site up
 		self.assertEqual(c.mz_subscription_plan, OTHER_PLAN) # plan corrected at signing (B3)
 		self.assertTrue(c.mz_linked_subscription)            # Subscription created
 		self.assertEqual(str(c.mz_billing_start), str(future))  # E2/E3: later of the two dates
@@ -174,7 +174,6 @@ class TestActivation(FrappeTestCase):
 
 	def test_activation_while_suspended_reactivates(self):
 		doc = self._make_trial(add_days(nowdate(), -3), prov_status="Suspended")
-		frappe.db.set_value("Contract", doc.name, "mz_account_phase", "Suspended", update_modified=False)
 		token = activation.get_activation_token(doc.name)
 		with patch("ai_saas.saas.contract_lifecycle._setup_subscription"), \
 		     patch("ai_saas.saas.provisioning.provision_tenant"), \

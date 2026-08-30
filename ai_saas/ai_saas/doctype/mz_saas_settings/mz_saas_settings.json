@@ -14,6 +14,7 @@
   "auto_archive",
   "overdue_days_to_suspend",
   "grace_days_to_archive",
+  "archive_retention_days",
   "section_billing",
   "prebilling_reminder_days",
   "overdue_followup_days",
@@ -84,6 +85,13 @@
    "default": "30"
   },
   {
+   "fieldname": "archive_retention_days",
+   "fieldtype": "Int",
+   "label": "Dias de Retenção do Backup",
+   "default": "180",
+   "description": "Quanto tempo o backup de uma conta encerrada é guardado. É a promessa feita nos emails de reactivação (G3) — muda aqui, muda lá."
+  },
+  {
    "fieldname": "section_billing",
    "fieldtype": "Section Break",
    "label": "Facturação"
@@ -149,7 +157,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-24 00:00:00",
+ "modified": "2026-08-30 10:00:00",
  "modified_by": "Administrator",
  "module": "AI SaaS",
  "name": "MZ SaaS Settings",

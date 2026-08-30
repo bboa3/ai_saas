@@ -47,7 +47,7 @@ scheduler_events = {
 jinja = {"methods": "ai_saas.utils.jinja"}
 
 fixtures = [
-	{"dt": "Custom Field", "filters": [["dt", "in", ["Contract", "Lead", "Subscription Plan"]], ["module", "=", "AI SaaS"]]},
+	{"dt": "Custom Field", "filters": [["dt", "in", ["Contract", "Lead", "Opportunity", "Subscription Plan"]], ["module", "=", "AI SaaS"]]},
 	{"dt": "Property Setter", "filters": [["name", "in", ["Contract-start_date-reqd"]]]},
 	{"dt": "Notification", "filters": [["name", "like", "AI SaaS%"]]},
 	{"dt": "Web Form", "filters": [["name", "in", ["cloud-feedback"]]]},

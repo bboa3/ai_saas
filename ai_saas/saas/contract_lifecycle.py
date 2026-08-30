@@ -1,11 +1,13 @@
 import frappe
 from frappe.utils import getdate, nowdate
 
+from ai_saas.saas import crm
+
 # The two triggers of the funnel, split along the signature (docs/sales-funnel-implementation.md, B1):
 #   contract submitted -> the site is created and the trial begins, signed or not;
 #   contract signed    -> the subscription is created and billing begins.
-# The account phase (B2) is stamped only on cloud contracts (plan + subdomain set);
-# a contract with an empty phase is invisible to the tenant lifecycle engine.
+# The account phase is never stored: tenant_lifecycle.account_phase derives it from
+# the signature and the site's status, and the Opportunity records the sales stage.
 
 
 def on_contract_submitted(doc, method=None):
@@ -20,12 +22,11 @@ def on_contract_submitted(doc, method=None):
 		return
 	if not doc.get("mz_subscription_plan"):
 		return
-	if _is_cloud_contract(doc):
-		_set_account_phase(doc, "Active" if doc.is_signed else "Trial")
 	if doc.is_signed and not doc.get("mz_linked_subscription"):
 		_setup_subscription(doc)
 	if doc.is_signed:
 		_move_customer_to_commercial_group(doc)
+		crm.report_for_contract(doc.name, crm.STAGE_ACTIVATED, status="Converted")
 	_maybe_provision_tenant(doc)
 
 
@@ -63,10 +64,10 @@ def on_contract_signed(doc, method=None):
 
 	if not doc.get("mz_linked_subscription"):
 		_setup_subscription(doc)
-	if _is_cloud_contract(doc):
-		_set_account_phase(doc, "Active")
 	_move_customer_to_commercial_group(doc)
 	_apply_scheduler_policy(doc)
+	# The signature is the funnel's conversion: the Opportunity closes as won.
+	crm.report_for_contract(doc.name, crm.STAGE_ACTIVATED, status="Converted")
 	# Legacy safety net: a contract submitted before the trigger split never provisioned
 	# unsigned. provision_tenant is idempotent (one record per contract), so this can
 	# never create a second site.
@@ -106,19 +107,6 @@ def _move_customer_to_commercial_group(doc):
 	)
 	if target and target != TRIAL_CUSTOMER_GROUP and frappe.db.exists("Customer Group", target):
 		frappe.db.set_value("Customer", doc.party_name, "customer_group", target)
-
-
-def _is_cloud_contract(doc) -> bool:
-	"""A cloud contract names a plan and a subdomain. Only these get an account phase."""
-	return bool(doc.get("mz_subscription_plan")) and bool(doc.get("mz_tenant"))
-
-
-def _set_account_phase(doc, phase):
-	"""Stamp the read-only phase field (B2). Written only by code, never by the form."""
-	if doc.get("mz_account_phase") == phase:
-		return
-	frappe.db.set_value("Contract", doc.name, "mz_account_phase", phase, update_modified=False)
-	doc.mz_account_phase = phase
 
 
 def _maybe_provision_tenant(doc):

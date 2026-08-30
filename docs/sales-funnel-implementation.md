@@ -403,6 +403,8 @@ While `lifecycle_dry_run` is on, every decision is logged (and digested to C3's 
 
 **Verified by.** An expired lab trial appears as an In Progress Email Campaign the next day.
 
+**As built (2026-08-30).** Not an Email Campaign: three Notifications on the Opportunity at stage `Cloud - Trial Expired` (`Days After mz_stage_since`), the same mechanism as G1 — one moving part for every segment. Expiry no longer marks the Opportunity Lost (it must stay reachable). No per-segment copy yet; `Lead.mz_segment` is there when it is wanted. See *Funnel ledger (as built)*.
+
 ### G3 — Deactivated accounts get no offer
 
 **Today.** Nothing exists; after F2, archived accounts have a recorded backup path and a `Closed` phase.
@@ -410,6 +412,65 @@ While `lifecycle_dry_run` is on, every decision is logged (and digested to C3's 
 **Change.** A report/list of `Closed` contracts with backup paths feeding a reactivation campaign (same mechanism as G2) whose offer is concrete: the data is backed up and the account returns as it was — restore being a manual `bench restore` by the team within the backup's lifetime.
 
 **Verified by.** An archived lab account appears in the list with a locatable backup; restoring that backup on a scratch site yields the working site.
+
+**As built (2026-08-30).** No report: the Opportunity list at `Cloud - Closed` is the list. Two Notifications (`Conta Encerrada - Dia 3/30`) rendered only while the provisioning record has a `backup_path`, pointing at `/reactivar` (a customer request → `MZ Overdue Review`), with the retention promise from `MZ SaaS Settings.archive_retention_days`. Restore stays a manual `bench restore`.
+
+---
+
+# Funnel ledger (G-part, as built 2026-08-30)
+
+## The Opportunity holds the stage
+
+One record per prospect carries the whole lifecycle in `sales_stage`; every lifecycle event reports to it through `saas/crm.py::report(opportunity, stage, status=None)`, which stamps `mz_stage_since` when the stage changes. Nothing else writes `sales_stage`.
+
+| Event | Reporter | Stage (status) |
+|---|---|---|
+| `/registo` step 1 | `api/signup._start → _enter_crm` | **Cloud - Form Started** (Lead + Opportunity created; a restart for the same email re-uses both) |
+| steps 2–3 | `_update → _sync_crm` | same stage, Lead refreshed, `mz_stage_since` restarted (`crm.touch`) |
+| submit | `_create_documents` | **Cloud - Account Created** |
+| daily usage probe | `usage_signals.evaluate_signals` | **Cloud - Trial Engaged** / **Cloud - Trial At Risk** |
+| signature | `contract_lifecycle.on_contract_signed` | **Cloud - Activated** (Converted) |
+| trial expiry | `tenant_lifecycle.suspend(cause="trial")` | **Cloud - Trial Expired** — stays Open |
+| overdue / manual suspend | `suspend(cause="overdue" \| "manual")` | **Cloud - Suspended** |
+| reactivate | `tenant_lifecycle.reactivate` | Account Created (unsigned) / Activated (signed) |
+| archive | `tenant_lifecycle.archive` | **Cloud - Closed** (Lost) |
+
+`find_opportunity(contract)` resolves Contract → Customer → (`customer`, or `lead_name`) → open Opportunity; Converted/Lost/Closed are excluded, so the two terminal statuses are set only at signature and archive. The Opportunity list grouped by `sales_stage` is the control screen — no report was built.
+
+## Campaigns read three fields
+
+Every campaign is a Notification on Opportunity with `Days After mz_stage_since`, a condition on `sales_stage`, recipient `contact_email`:
+
+- **G1** `AI SaaS - Lead Nurture - Dia 0/3/10/20` — Form Started; resume link via `Opportunity.mz_signup`.
+- **G2** `AI SaaS - Trial Expirado - Dia 1/7/21` — Trial Expired; activation link (signing *is* the reactivation).
+- **G3** `AI SaaS - Conta Encerrada - Dia 3/30` — Closed, rendered only while the provisioning record has a `backup_path`; retention from `MZ SaaS Settings.archive_retention_days`.
+
+A stage change stops a sequence; adding a segment is one stage plus one notification.
+
+## Where the contact lives
+
+Lead until there is a Customer, then the Customer's primary Contact — never typed twice:
+
+- **Form Started → submit:** the Lead is the contact record (`first_name`, `email_id`, `mobile_no`, company, segment, city); the Opportunity's native `contact_email`/`contact_mobile` come from it.
+- **From submit:** `_create_documents` creates the Customer (`lead_name` kept) and the primary Contact; `set_customer_primaries` makes it `customer_primary_contact`, so `Customer.email_id`/`mobile_no` are ERPNext's own fetches. `Opportunity.contact_person` is set to that Contact (its `contact_email`/`contact_mobile` fetch from it), and the Contract's `contact_email` / `mz_contact_name` / `mz_contact_mobile` are read-only `fetch_from` mirrors of the Customer. Edit the Contact → Customer → Opportunity → Contract → every email follow.
+- The Lead is frozen at conversion (standard ERPNext) and nothing reads it afterwards.
+
+## Account state is derived, not stored
+
+`tenant_lifecycle.account_phase(contract)`: no provisioning row → `""`; provisioning Archived → Closed; Suspended → Suspended; `is_signed` → Active; else Trial. `live_trials()` (docstatus 1, unsigned, provisioning Active) is the single query used by the lifecycle engine, the usage probe and the signup ceiling.
+
+## Every human decision is an `MZ Overdue Review`
+
+`origin` = Facturação (engine) / Manual (Contract button **Rever conta**) / Pedido do Cliente (`/reactivar?contract=&token=` → `api/reactivation.request`, assigned to the account manager, ops alerted; repeats append to the open review). Setting `review_status` calls `suspend()` / `reactivate()`, which report to the Opportunity — so the audit trail and the ledger cannot disagree. Payment never reactivates automatically.
+
+## Delivery: what needs the scheduler
+
+Two sending paths, and they fail differently:
+
+- `frappe.sendmail(..., delayed=False)` — welcome/"Conta pronta", the lifecycle emails (`lifecycle_mail`), "já tem uma conta": sent from the request, no scheduler involved.
+- **Notifications** (G1/G2/G3, the trial countdown, dunning, invoice mails) always go to the Email Queue, which only `frappe.email.queue.flush` (scheduler, every minute) sends; the `Days After` ones are additionally *created* by the daily `trigger_daily_alerts` (pinned to 08:00 by `ensure_daily_alerts_hour`).
+
+Found 2026-08-30: erp.local had the scheduler disabled, so "Conta pronta" arrived while the Dia 0 nurture — and every other Notification since 08-28, including a real invoice mail — sat `Not Sent` with no error. `bench --site <site> scheduler status` is the first check when a campaign mail "is not sent"; on a lab site clear the queue of real customer addresses before `enable-scheduler`. Fixed with `enable-scheduler` on erp.local; check the same on production before trusting the campaigns.
 
 ---
 
@@ -422,12 +483,11 @@ Frappe scheduler (erp.local), once a day
  │
  └─ ai_saas.saas.usage_signals.collect_usage_snapshots()
       │
-      ├─ SELECT Contract WHERE docstatus=1 AND mz_account_phase='Trial'
-      │     (Active / Suspended / Closed accounts are never probed)
+      ├─ live_trials(): Contract docstatus=1 AND is_signed=0
+      │     JOIN MZ Tenant Provisioning status='Active'
+      │     (signed / Suspended / Archived / unprovisioned → never probed)
       │
       └─ for each trial contract:
-           ├─ needs an MZ Tenant Provisioning row with status Active
-           │     (not provisioned yet / Failed / Suspended → skipped)
            ├─ already has a snapshot dated today → skipped (idempotent)
            ├─ _probe(site)  →  bench --site <tenant> execute
            │                   erpnext_mz.utils.tenant_usage.usage_snapshot
@@ -806,3 +866,19 @@ MOZ ECONOMIA, SA sells through two partners: **Kaleny Holding, SU, SA** and **Cu
 - Slug uniqueness stays global across domains (simplest; no two tenants share a slug).
 
 **Ops prerequisite before opening the partner forms**: wildcard DNS `*.erp.curati.co.mz` and `*.erp.kalenyholding.com` → the bench, plus TLS for both — the app only sets `host_name`; nothing in code touches DNS/nginx. Tests: `tests/test_provisioning_apps.py` (domain profile) and `tests/test_signup.py` (Curati signup end to end, unknown domain fallback). Deploy: migrate (MZ Signup column, `Contract-mz_domain` custom field, notification fixtures) and, since Notification fixtures skip unchanged `modified`, nothing else.
+
+### 2026-08-30 — The Opportunity as the funnel's ledger; G1 moved, G2 and G3 built; the Contract slimmed
+
+**Why.** Until now the Contract's `mz_account_phase` was the real state machine and the Opportunity a stale copy: created at submit, advanced only by the usage probe, marked `Lost` at trial expiry — after which `find_opportunity` (which excludes Lost) could never reach it again, which is exactly the segment G2 wants to talk to. Signing, suspending, reactivating and archiving reported nothing. Unfinished signups lived only on `MZ Signup`, invisible to Sales.
+
+**Built.**
+- *Ledger.* `saas/crm.py`: `STAGES` (`Form Started → Account Created → Trial Engaged / At Risk → Trial Expired → Activated → Suspended → Closed`), `report(opportunity, stage, status=None)` (stamps `Opportunity.mz_stage_since` on change), `report_for_contract`, `touch`. Reporters: `api/signup._start` (Lead + Opportunity at step 1 — `_enter_crm`; a restart for the same email re-uses an Opportunity still at Form Started), `_update` (`_sync_crm`: Lead fields + clock restart), `_create_documents` (Account Created, `contact_person`), `contract_lifecycle` on signature (Activated, **Converted**), `tenant_lifecycle.suspend` (cause `trial` → Trial Expired, else Suspended), `reactivate` (Account Created / Activated), `archive` (Closed, **Lost**). **Change from F6:** expiry no longer marks Lost — the Opportunity stays Open at Trial Expired. Retired stages (`Qualified - Awaiting Setup`, `Form Submitted`, `Nurturing`) are deleted by `_sync_sales_stages` where unused.
+- *Campaigns* (`fixtures/notification.json`, all on Opportunity, all `Days After mz_stage_since`, recipient `contact_email`): G1's four `Lead Nurture` re-targeted (condition `sales_stage == "Cloud - Form Started"`, resume link through `Opportunity.mz_signup`); G2 `Trial Expirado - Dia 1 / 7 / 21` (activation link — signing *is* the reactivation; Dia 7 quotes what the account built from the last usage snapshot); G3 `Conta Encerrada - Dia 3 / 30` (rendered only when the provisioning record has a `backup_path`; the retention promise reads `MZ SaaS Settings.archive_retention_days`, new, default 180 — the archived email template reads the same setting instead of a hard-coded "12 meses").
+- *Contract slimmed.* `mz_account_phase` removed; `tenant_lifecycle.account_phase(contract)` derives it (Closed / Suspended from the site's status, Active / Trial from the signature, `""` without a site) and `live_trials()` is the one query the engine, the usage probe and the signup ceiling share (a contract without a provisioning row is invisible, as the empty phase used to make it). `contact_email`, `mz_contact_name`, `mz_contact_mobile` are now read-only `fetch_from` mirrors of the Customer (`email_id`, `customer_primary_contact`, `mobile_no`) — the Contact is the source; signup and activation stopped writing them (`mz_first_name` accepts a Contact ID so greetings still read "Ana").
+- *Actions.* All human decisions go through `MZ Overdue Review` (new `origin`: Facturação / Manual / Pedido do Cliente; Sales Manager can create/write). Contract button **Rever conta** opens the contract's open review or a new one. Customers ask from `/reactivar?contract=&token=` (activation token; `api/reactivation.request`) — a review with origin *Pedido do Cliente*, assigned to the account manager, ops alerted; a repeat appends to the open review. The suspended/archived lifecycle emails link to it. No automatic reactivation on payment: the manager decides on the review.
+
+**Ops on deploy.** `bench migrate` (MZ Signup `opportunity`, MZ Overdue Review `origin`, Settings `archive_retention_days`, custom fields; `_remove_stale_fields` drops `Contract-mz_account_phase`; `_sync_client_scripts` and `_sync_sales_stages` run there too), then `push_email_templates` (not in `after_migrate` — `ensure_email_templates` only creates missing ones). Existing Opportunities carry no `mz_stage_since`: the lifecycle stamps it at the next event; nothing needs backfilling.
+
+**Review fixes (same day).** (1) `find_opportunity` excluded *Converted*, so a signed account's suspension for non-payment and its archive reported nothing — now only Lost / Closed are past; test `test_a_converted_opportunity_still_reports`. (2) A signup that skipped step 1's CRM entry (duplicate-of-account, or started before this shipped) was entered at Form Started during submit, which fired the Dia 0 "finish your registration" email seconds before Account Created — `_enter_crm(signup, stage=…)` inserts straight at the target stage. (3) A restart re-uses the Opportunity, so no "New" event: `_resend_day_zero` sends the Dia 0 notification again with the live resume link. (4) The mirrors overwrite on every save, including with empty: `install.backfill_customer_contacts` (after_install/after_migrate) gives any cloud Customer without an email a primary Contact built from what its Contract knows, before the first save can blank it (erp.local: nothing to do). Known and accepted: Notification *conditions* cannot read the provisioning status, so the Contract-anchored countdown and Pós-Contrato mails have no site-status gate — the dates make the overlap theoretical (a trial is suspended at `start_date`, day 0 of the countdown; overdue suspension is ≥ 40 days after billing start, past Dia 33); and `send_an_email` sends whatever the message renders to, so the `{% if %}` gates in G2/G3 must stay always-true for self-service accounts (they are: a Trial Expired signup has a contract; `archive` stamps `backup_path` before reporting Closed).
+
+**Verified by.** 129 tests (`run-tests --app ai_saas`), incl.: step 1 creates Lead + Opportunity at Form Started and a restart re-uses them; submit advances the same Opportunity; signature → Activated/Converted; suspend(trial) → Trial Expired and still Open, overdue → Suspended, reactivate → back, archive → Closed/Lost; customer request → review with origin, repeat appends, bad token refused; every G1/G2/G3 template renders against a real signup with no `{{` left and the right link; `/reactivar` renders the three states. Test hygiene: a deleted contract reverts its naming series, so stale provisioning rows attached to reused names — `helpers.purge_orphan_provisioning` runs in `before_tests`.

@@ -6,18 +6,24 @@ relationship emails greet the person by the time of day and sign with the accoun
 manager's name; formal (billing) emails do neither.
 """
 
+import re
+
 import frappe
 
-from ai_saas.saas.activation import get_activation_url  # noqa: F401
+from ai_saas.saas.activation import get_activation_url, get_reactivation_url  # noqa: F401
 
-__all__ = ["get_activation_url", "mz_first_name", "mz_greeting", "mz_signature"]
+__all__ = ["get_activation_url", "get_reactivation_url", "mz_first_name", "mz_greeting", "mz_signature"]
 
 TEAM = "Equipa MozEconomia Cloud"
 
 
 def mz_first_name(full_name=None) -> str:
-	"""First token of a person's name — '' when nothing usable is given."""
-	return (full_name or "").strip().split(" ")[0] if full_name else ""
+	"""First token of a person's name — '' when nothing usable is given. Accepts a Contact
+	ID too ("Ana Silva-Mais Forte, LDA"): the Contract mirrors the Customer's primary
+	contact by its ID, and the greeting must still read 'Ana'."""
+	if not full_name:
+		return ""
+	return re.split(r"[ \-]", full_name.strip(), maxsplit=1)[0]
 
 
 def mz_greeting(full_name=None) -> str:

@@ -1,101 +1,132 @@
 {
-	"actions": [],
-	"autoname": "MZ-OVERDUE-.YYYY.-.#####",
-	"creation": "2026-03-11 00:00:00",
-	"doctype": "DocType",
-	"editable_grid": 1,
-	"engine": "InnoDB",
-	"field_order": ["customer", "contract", "outstanding_amount", "overdue_since", "review_status", "new_trial_end_date", "assigned_to", "notes"],
-	"fields": [
-		{
-			"fieldname": "customer",
-			"fieldtype": "Link",
-			"label": "Cliente",
-			"options": "Customer",
-			"reqd": 1,
-			"in_list_view": 1
-		},
-		{
-			"fieldname": "contract",
-			"fieldtype": "Link",
-			"label": "Contrato",
-			"options": "Contract",
-			"in_list_view": 1
-		},
-		{
-			"fieldname": "outstanding_amount",
-			"fieldtype": "Currency",
-			"label": "Valor em Dívida",
-			"in_list_view": 1
-		},
-		{
-			"fieldname": "overdue_since",
-			"fieldtype": "Date",
-			"label": "Em Atraso Desde",
-			"in_list_view": 1
-		},
-		{
-			"fieldname": "review_status",
-			"fieldtype": "Select",
-			"label": "Estado de Revisão",
-			"options": "Pending Review\nSuspend\nReactivate\nDeactivate",
-			"default": "Pending Review",
-			"reqd": 1,
-			"in_list_view": 1
-		},
-		{
-			"fieldname": "new_trial_end_date",
-			"fieldtype": "Date",
-			"label": "Nova Data de Fim do Trial",
-			"depends_on": "eval:doc.review_status=='Reactivate'",
-			"description": "Obrigatória ao reactivar um trial não assinado — sem uma nova data, o motor voltava a suspendê-lo na manhã seguinte."
-		},
-		{
-			"fieldname": "assigned_to",
-			"fieldtype": "Link",
-			"label": "Atribuído a",
-			"options": "User"
-		},
-		{
-			"fieldname": "notes",
-			"fieldtype": "Text",
-			"label": "Notas"
-		}
-	],
-	"links": [],
-	"modified": "2026-03-11 00:00:00",
-	"modified_by": "Administrator",
-	"module": "AI SaaS",
-	"name": "MZ Overdue Review",
-	"owner": "Administrator",
-	"permissions": [
-		{
-			"create": 1,
-			"delete": 1,
-			"email": 1,
-			"export": 1,
-			"print": 1,
-			"read": 1,
-			"report": 1,
-			"role": "System Manager",
-			"share": 1,
-			"write": 1
-		},
-		{
-			"create": 1,
-			"delete": 0,
-			"email": 1,
-			"export": 1,
-			"print": 1,
-			"read": 1,
-			"report": 1,
-			"role": "Accounts Manager",
-			"share": 1,
-			"write": 1
-		}
-	],
-	"sort_field": "modified",
-	"sort_order": "DESC",
-	"states": [],
-	"track_changes": 1
+ "actions": [],
+ "autoname": "MZ-OVERDUE-.YYYY.-.#####",
+ "creation": "2026-03-11 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "customer",
+  "contract",
+  "outstanding_amount",
+  "overdue_since",
+  "origin",
+  "review_status",
+  "new_trial_end_date",
+  "assigned_to",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Cliente",
+   "options": "Customer",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "contract",
+   "fieldtype": "Link",
+   "label": "Contrato",
+   "options": "Contract",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "outstanding_amount",
+   "fieldtype": "Currency",
+   "label": "Valor em Dívida",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "overdue_since",
+   "fieldtype": "Date",
+   "label": "Em Atraso Desde",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "origin",
+   "fieldtype": "Select",
+   "label": "Origem",
+   "options": "Facturação\nManual\nPedido do Cliente",
+   "default": "Facturação",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "review_status",
+   "fieldtype": "Select",
+   "label": "Estado de Revisão",
+   "options": "Pending Review\nSuspend\nReactivate\nDeactivate",
+   "default": "Pending Review",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "new_trial_end_date",
+   "fieldtype": "Date",
+   "label": "Nova Data de Fim do Trial",
+   "depends_on": "eval:doc.review_status=='Reactivate'",
+   "description": "Obrigatória ao reactivar um trial não assinado — sem uma nova data, o motor voltava a suspendê-lo na manhã seguinte."
+  },
+  {
+   "fieldname": "assigned_to",
+   "fieldtype": "Link",
+   "label": "Atribuído a",
+   "options": "User"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text",
+   "label": "Notas"
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-30 10:00:00",
+ "modified_by": "Administrator",
+ "module": "AI SaaS",
+ "name": "MZ Overdue Review",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
 }

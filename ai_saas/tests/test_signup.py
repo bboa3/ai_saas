@@ -70,6 +70,31 @@ class TestSignup(FrappeTestCase):
 
 	# ---- A1/A2 ------------------------------------------------------------------
 
+	def test_step_one_enters_the_crm(self):
+		"""Step 1 is already a Lead and an Opportunity at Form Started — what Sales sees
+		and what the nurture reads. A restart for the same address re-uses them."""
+		r = signup._start("Teste Signup", EMAIL, "+258841234567", PLAN)
+		doc = frappe.get_doc("MZ Signup", {"resume_token": r["token"]})
+		self.assertTrue(doc.lead and doc.opportunity)
+		opp = frappe.db.get_value("Opportunity", doc.opportunity,
+			["sales_stage", "status", "contact_email", "mz_signup", "mz_stage_since", "party_name"], as_dict=True)
+		self.assertEqual((opp.sales_stage, opp.status, opp.contact_email, opp.mz_signup, opp.party_name),
+		                 ("Cloud - Form Started", "Open", EMAIL, doc.name, doc.lead))
+		self.assertTrue(opp.mz_stage_since)
+
+		# step 2 teaches the Lead what the form learnt and restarts the clock
+		signup._update(r["token"], 2, {"company_name": COMPANY, "tax_id": "400123456", "tax_regime": "Normal (16%)",
+		                               "industry": self.industry, "address": "Av. 25 de Setembro, 1234, Maputo"})
+		lead = frappe.db.get_value("Lead", doc.lead, ["company_name", "mz_segment", "city"], as_dict=True)
+		self.assertEqual((lead.company_name, lead.mz_segment, lead.city), (COMPANY, self.industry, "Maputo"))
+
+		# a second start for the same address: same Lead, same Opportunity, pointing at the new signup
+		r2 = signup._start("Teste Signup", EMAIL, "+258841234567", PLAN)
+		doc2 = frappe.get_doc("MZ Signup", {"resume_token": r2["token"]})
+		self.assertEqual((doc2.lead, doc2.opportunity), (doc.lead, doc.opportunity))
+		self.assertEqual(frappe.db.get_value("Opportunity", doc.opportunity, "mz_signup"), doc2.name)
+		self.assertEqual(frappe.db.count("Opportunity", {"party_name": doc.lead}), 1)
+
 	def test_second_start_opens_a_fresh_record_and_never_reveals_the_first(self):
 		"""The form never sends anyone to their inbox: a second start continues in the
 		browser. What it must not do is hand over the first record — its fields are
@@ -233,9 +258,10 @@ class TestSignup(FrappeTestCase):
 		provision.assert_called_once_with(doc.contract)
 
 		c = frappe.db.get_value("Contract", doc.contract,
-			["docstatus", "is_signed", "status", "mz_account_phase", "mz_tenant", "mz_subscription_plan", "contact_email", "contract_terms"], as_dict=True)
-		self.assertEqual((c.docstatus, c.is_signed, c.status, c.mz_account_phase), (1, 0, "Unsigned", "Trial"))
-		self.assertEqual((c.mz_tenant, c.mz_subscription_plan, c.contact_email), (SLUG, PLAN, EMAIL))
+			["docstatus", "is_signed", "status", "mz_tenant", "mz_subscription_plan", "contact_email", "mz_contact_mobile", "contract_terms"], as_dict=True)
+		self.assertEqual((c.docstatus, c.is_signed, c.status), (1, 0, "Unsigned"))
+		# contact fields are fetched from the Customer's primary contact, never copied
+		self.assertEqual((c.mz_tenant, c.mz_subscription_plan, c.contact_email, c.mz_contact_mobile), (SLUG, PLAN, EMAIL, "+258841234567"))
 		self.assertIn(COMPANY, c.contract_terms)
 		self.assertNotIn("{{", c.contract_terms)
 
@@ -253,8 +279,10 @@ class TestSignup(FrappeTestCase):
 		self.assertEqual([r.app_name for r in con.mz_apps_to_install], apps_for_segment(self.industry, con.mz_subscription_plan))
 		self.assertEqual((con.mz_domain, con.mz_tenant_url), (".erp.mozeconomia.co.mz", SLUG + ".erp.mozeconomia.co.mz"))
 		self.assertEqual([r.app_name for r in con.mz_apps_to_install][:2] if not con.mz_apps_to_install[0].app_name == "hrms" else [r.app_name for r in con.mz_apps_to_install][1:3], ["erpnext", "erpnext_mz"])
-		opp = frappe.db.get_value("Opportunity", {"party_name": doc.lead}, ["sales_stage", "opportunity_from"], as_dict=True)
-		self.assertEqual((opp.sales_stage, opp.opportunity_from), ("Cloud - Account Created", "Lead"))
+		opp = frappe.db.get_value("Opportunity", doc.opportunity, ["sales_stage", "opportunity_from", "contact_person", "mz_signup"], as_dict=True)
+		self.assertEqual((opp.sales_stage, opp.opportunity_from, opp.mz_signup), ("Cloud - Account Created", "Lead", doc.name))
+		self.assertEqual(opp.contact_person, cust.customer_primary_contact)
+		self.assertEqual(frappe.db.count("Opportunity", {"party_name": doc.lead}), 1)  # step 1's record, advanced — not a second one
 		addr = frappe.db.get_value("Address", {"address_title": COMPANY}, ["address_type", "address_line1", "address_line2", "city", "state"], as_dict=True)
 		self.assertEqual((addr.address_type, addr.address_line1, addr.address_line2, addr.city, addr.state),
 		                 ("Billing", "Av. 25 de Setembro, 1234", "Bairro Central", "Maputo", "Maputo Cidade"))

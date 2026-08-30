@@ -71,6 +71,22 @@ def before_tests():
 	"""
 	frappe.flags.mute_emails = True
 	purge_test_emails()
+	purge_orphan_provisioning()
+
+
+def purge_orphan_provisioning():
+	"""Provisioning rows whose contract is gone. A deleted contract reverts the naming
+	series, so a later test's contract can get the same name — and inherit a stale site
+	record, which the lifecycle engine's join would then count twice."""
+	orphans = frappe.db.sql_list("""
+		SELECT p.name FROM `tabMZ Tenant Provisioning` p
+		LEFT JOIN `tabContract` c ON c.name = p.contract
+		WHERE c.name IS NULL
+	""")
+	for name in orphans:
+		frappe.delete_doc("MZ Tenant Provisioning", name, force=True, ignore_permissions=True)
+	if orphans:
+		frappe.db.commit()
 
 
 def purge_test_emails():

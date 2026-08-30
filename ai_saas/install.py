@@ -22,6 +22,7 @@ def after_install():
 	backfill_billing_start()
 	backfill_contact_mobile()
 	backfill_contact_name()
+	backfill_customer_contacts()
 	backfill_customer_primaries()
 	ensure_contract_template()
 	ensure_email_templates()
@@ -49,6 +50,7 @@ def after_migrate():
 	backfill_billing_start()
 	backfill_contact_mobile()
 	backfill_contact_name()
+	backfill_customer_contacts()
 	backfill_customer_primaries()
 	ensure_contract_template()
 	ensure_email_templates()
@@ -70,6 +72,7 @@ def after_migrate():
 
 _STALE_FIELDS = {
 	"Contract": [
+		"mz_account_phase",  # 2026-08-30: derived by tenant_lifecycle.account_phase, never stored
 		"contact_person",
 		"mz_billing_cycle",
 		"mz_contact_email",
@@ -179,6 +182,54 @@ def backfill_billing_start():
 		frappe.db.set_value("Contract", r.name, "mz_billing_start", r.start_date, update_modified=False)
 
 
+def backfill_customer_contacts():
+	"""Since 2026-08-30 the Contract's contact fields are fetch_from mirrors of the
+	Customer, rewritten on every save — a Customer with no email would blank the
+	contract's typed contact_email at its next save and silence every notification.
+	For each cloud contract whose Customer still has no email: make the Contact
+	carrying that email primary, or create one from what the contract knows, so the
+	source exists before the mirror overwrites the copy. Idempotent."""
+	from ai_saas.saas.party import set_customer_primaries
+
+	if not frappe.db.has_column("Contract", "contact_email"):
+		return
+	rows = frappe.db.sql(
+		"""SELECT k.name, k.party_name AS customer, k.contact_email, k.mz_contact_name, k.mz_contact_mobile
+		   FROM `tabContract` k JOIN `tabCustomer` cu ON cu.name = k.party_name
+		   WHERE k.docstatus = 1 AND k.party_type = 'Customer' AND IFNULL(k.mz_tenant, '') <> ''
+		     AND IFNULL(k.contact_email, '') <> '' AND IFNULL(cu.email_id, '') = ''
+		   ORDER BY k.creation DESC""",
+		as_dict=True,
+	)
+	done = set()
+	for r in rows:
+		if r.customer in done:
+			continue
+		done.add(r.customer)
+		try:
+			with_email = frappe.get_all("Contact Email", {"email_id": r.contact_email}, pluck="parent")
+			contact = with_email and frappe.db.get_value(
+				"Dynamic Link",
+				{"parenttype": "Contact", "link_doctype": "Customer", "link_name": r.customer,
+				 "parent": ("in", with_email)},
+				"parent",
+			)
+			if not contact:
+				doc = frappe.get_doc({
+					"doctype": "Contact", "is_primary_contact": 1,
+					"first_name": r.mz_contact_name or frappe.db.get_value("Customer", r.customer, "customer_name"),
+					"email_ids": [{"email_id": r.contact_email, "is_primary": 1}],
+					"phone_nos": [{"phone": r.mz_contact_mobile, "is_primary_mobile_no": 1}] if r.mz_contact_mobile else [],
+					"links": [{"link_doctype": "Customer", "link_name": r.customer}],
+				})
+				doc.insert(ignore_permissions=True)
+				contact = doc.name
+			frappe.db.set_value("Customer", r.customer, "customer_primary_contact", None)
+			set_customer_primaries(r.customer, contact=contact, email=r.contact_email, mobile=r.mz_contact_mobile)
+		except Exception:
+			frappe.log_error(title=f"AI SaaS: contact not backfilled for {r.customer}", message=frappe.get_traceback())
+
+
 def backfill_customer_primaries():
 	"""Cloud customers created before the funnel set both pointers get them now:
 	customer_primary_contact and customer_primary_address, resolved through Dynamic
@@ -268,7 +319,7 @@ LIFECYCLE_EMAIL_TEMPLATES = {
 		"<p>Para repor o acesso, regularize a factura em atraso — o acesso volta no próprio dia do pagamento. "
 		"Se já pagou, responda a este email com o comprovativo e tratamos de imediato.</p>"
 		"{% else %}"
-		"<p>Para repor o acesso, responda a este email ou fale connosco pelo WhatsApp.</p>"
+		'<p>Para repor o acesso, <a href="{{ reactivation_url }}">peça a reactivação</a>, responda a este email ou fale connosco pelo WhatsApp.</p>'
 		"{% endif %}"
 		"<p style=\"font-size:13px\"><strong>Importante:</strong> se a conta permanecer suspensa durante {{ grace_days }} dias será arquivada. "
 		"Guardamos uma cópia de segurança completa, mas o acesso directo deixa de existir e o restauro passa a ser feito pela nossa equipa.</p>"
@@ -281,7 +332,8 @@ LIFECYCLE_EMAIL_TEMPLATES = {
 		"<p>A conta da <strong>{{ customer_name }}</strong> em {{ site_name }} esteve suspensa"
 		"{% if suspended_on %} desde {{ suspended_on }}{% endif %} e foi arquivada hoje.</p>"
 		"<p>Antes de a desligar fizemos uma <strong>cópia de segurança completa</strong> de todos os dados — facturas, clientes, artigos, documentos anexados. Nada se perdeu.</p>"
-		"<p>Guardamos essa cópia durante <strong>12 meses</strong>. Dentro desse prazo, responda a este email ou fale connosco pelo WhatsApp: "
+		"<p>Guardamos essa cópia durante <strong>{{ retention_days }} dias</strong>. Dentro desse prazo, "
+		'<a href="{{ reactivation_url }}">peça a reactivação</a>, responda a este email ou fale connosco pelo WhatsApp: '
 		"a nossa equipa restaura a conta a partir da cópia e a {{ customer_name }} continua exactamente de onde parou.</p>"
 		+ _FOOTER,
 	},
@@ -482,6 +534,7 @@ frappe.ui.form.on('Contract', {
 \t\t_attach_tenant_suffix(frm);
 \t\t_update_tenant_url(frm);
 \t\t_populate_default_apps(frm);
+\t\t_add_review_button(frm);
 \t},
 \tmz_tenant: function(frm) {
 \t\t_update_tenant_url(frm);
@@ -497,6 +550,26 @@ frappe.ui.form.on('Contract', {
 \t\t_populate_default_apps(frm, true);
 \t}
 });
+
+function _add_review_button(frm) {
+\t// Every human decision about the account (suspend, reactivate, deactivate) is taken
+\t// on an MZ Overdue Review — one record per decision, one audit trail. The button opens
+\t// the contract's open review, or a new one already pointing at this contract.
+\tif (frm.doc.docstatus !== 1 || frm.doc.party_type !== 'Customer' || !frm.doc.mz_tenant) return;
+\tfrm.add_custom_button(__('Rever conta'), function() {
+\t\tfrappe.db.get_value('MZ Overdue Review',
+\t\t\t{ contract: frm.doc.name, review_status: 'Pending Review' }, 'name'
+\t\t).then(function(r) {
+\t\t\tif (r.message && r.message.name) {
+\t\t\t\tfrappe.set_route('Form', 'MZ Overdue Review', r.message.name);
+\t\t\t} else {
+\t\t\t\tfrappe.new_doc('MZ Overdue Review', {
+\t\t\t\t\tcontract: frm.doc.name, customer: frm.doc.party_name, origin: 'Manual'
+\t\t\t\t});
+\t\t\t}
+\t\t});
+\t}, __('Conta'));
+}
 
 function _attach_tenant_suffix(frm) {
 \tvar field = frm.fields_dict['mz_tenant'];
@@ -603,23 +676,21 @@ def _sync_client_scripts():
 		}).insert(ignore_permissions=True)
 
 
-_CLOUD_SALES_STAGES = [
-"Cloud - Account Created",
-"Cloud - Qualified - Awaiting Setup",
-"Cloud - Form Submitted",
-"Cloud - Form Started",
-"Cloud - Nurturing",
-# D2 — set by usage_signals from the daily probe of the trial site.
-"Cloud - Trial Engaged",
-"Cloud - Trial At Risk",
-]
+# Stages of the old web-form flow that nothing sets any more; dropped when unused.
+_RETIRED_SALES_STAGES = ["Cloud - Qualified - Awaiting Setup", "Cloud - Form Submitted", "Cloud - Nurturing"]
 
 
 def _sync_sales_stages():
-	"""Ensure the Cloud sales-stage records exist. Idempotent — safe on every migrate."""
-	for stage in _CLOUD_SALES_STAGES:
+	"""Ensure the Cloud sales-stage records (saas/crm.STAGES) exist and the retired ones
+	are gone where no Opportunity still carries them. Idempotent — safe on every migrate."""
+	from ai_saas.saas.crm import STAGES
+
+	for stage in STAGES:
 		if not frappe.db.exists("Sales Stage", stage):
 			frappe.get_doc({"doctype": "Sales Stage", "stage_name": stage}).insert(ignore_permissions=True)
+	for stage in _RETIRED_SALES_STAGES:
+		if frappe.db.exists("Sales Stage", stage) and not frappe.db.exists("Opportunity", {"sales_stage": stage}):
+			frappe.delete_doc("Sales Stage", stage, ignore_permissions=True)
 
 
 _QUALITY_FEEDBACK_TEMPLATES = {

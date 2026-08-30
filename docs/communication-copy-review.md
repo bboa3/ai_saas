@@ -19,7 +19,7 @@ One voice, two registers — chosen by what the message does.
 
 Fixed rules for both registers:
 - **One CTA per message**, a branded pill link (`_BTN`); secondary actions are green inline links (`_LINK`), never a second pill and never a table button.
-- **Speak to a person**: `Contract.mz_contact_name` (from signup, backfilled from the primary Contact); never "Olá Empresa, SA".
+- **Speak to a person**: `Contract.mz_contact_name` (a read-only mirror of the Customer's primary Contact since 2026-08-30); never "Olá Empresa, SA".
 - **Standard lines**, written once in `install.py`: `SUPPORT_LINE`, `TRIAL_PROMISE` ("Activar não custa nada — a facturação começa no dia em que activar"), `CALL_OFFER` ("20 minutos connosco: emitimos a primeira factura consigo, sem custo").
 - **Mozambican Portuguese**: factura, facturação, activar, contacto, utilizador. In the trial group the account *pausa*; *suspensa* is used only when it is the actual state (lifecycle, dunning).
 - **Subjects state a fact or a benefit**, never a command ("decida" is gone).

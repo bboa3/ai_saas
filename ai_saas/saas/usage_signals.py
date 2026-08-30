@@ -21,8 +21,8 @@ from ai_saas.saas import crm
 from ai_saas.saas.provisioning import ProvisioningError, get_bench_cmd, run_cmd_capture
 
 PROBE_TIMEOUT = 60
-STAGE_ENGAGED = "Cloud - Trial Engaged"
-STAGE_AT_RISK = "Cloud - Trial At Risk"
+STAGE_ENGAGED = crm.STAGE_TRIAL_ENGAGED
+STAGE_AT_RISK = crm.STAGE_TRIAL_AT_RISK
 MARKER_HOT = "[Lead quente]"
 MARKER_COLD = "[Lead frio]"
 MARKER_COOLING = "[Lead a arrefecer]"
@@ -49,12 +49,9 @@ def collect_usage_snapshots(contracts=None):
 	`contracts` restricts the sweep to those contract names — for a manual re-run on
 	one account, and for tests, which must never touch the real trials on the site."""
 	today = getdate(nowdate())
-	filters = {"docstatus": 1, "mz_account_phase": "Trial"}
-	if contracts is not None:
-		filters["name"] = ("in", list(contracts))
-	trials = frappe.get_all(
-		"Contract", filters=filters, fields=["name", "party_name", "creation", "start_date"]
-	)
+	from ai_saas.saas.tenant_lifecycle import live_trials
+
+	trials = live_trials(fields=["name", "party_name", "creation", "start_date"], names=contracts)
 	for contract in trials:
 		prov = frappe.db.get_value(
 			"MZ Tenant Provisioning",
@@ -105,7 +102,8 @@ def usage_report_rows(date=None) -> list:
 		          s.engagement_score, s.`signal`, c.party_name, c.start_date
 		   from `tabMZ Tenant Usage Snapshot` s
 		   join `tabContract` c on c.name = s.contract
-		   where s.snapshot_date = %s and c.docstatus = 1 and c.mz_account_phase = 'Trial'
+		   join `tabMZ Tenant Provisioning` p on p.contract = c.name
+		   where s.snapshot_date = %s and c.docstatus = 1 and c.is_signed = 0 and p.status = 'Active'
 		   order by s.engagement_score desc, c.start_date asc""",
 		(date,),
 		as_dict=True,
@@ -233,7 +231,7 @@ def evaluate_signals(contract, snapshot):
 		return signal  # legacy contract without an Opportunity, or nothing to say today
 
 	if signal == "Engaged":
-		if crm.set_opportunity_stage(opportunity, STAGE_ENGAGED):
+		if crm.report(opportunity, STAGE_ENGAGED):
 			crm.create_sales_todo(
 				opportunity,
 				f"{contract.party_name} está a usar o sistema a sério ({points} pontos): "
@@ -241,7 +239,7 @@ def evaluate_signals(contract, snapshot):
 				MARKER_HOT,
 			)
 	elif signal == "Cooling":
-		if crm.set_opportunity_stage(opportunity, STAGE_AT_RISK):
+		if crm.report(opportunity, STAGE_AT_RISK):
 			crm.create_sales_todo(
 				opportunity,
 				f"{contract.party_name} esteve activo e parou: sem login há {SILENT_DAYS}+ dias "
@@ -250,7 +248,7 @@ def evaluate_signals(contract, snapshot):
 				MARKER_COOLING,
 			)
 	elif signal == "Cold":
-		if crm.set_opportunity_stage(opportunity, STAGE_AT_RISK):
+		if crm.report(opportunity, STAGE_AT_RISK):
 			crm.create_sales_todo(
 				opportunity,
 				f"{contract.party_name} está a meio do trial (termina em {contract.start_date}) "

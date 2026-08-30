@@ -25,11 +25,13 @@ class TestMessaging(FrappeTestCase):
 				"customer_group": frappe.db.get_value("Customer Group", {"is_group": 0}, "name"),
 				"territory": frappe.db.get_value("Territory", {"is_group": 0}, "name"),
 			}).insert(ignore_permissions=True)
+		# The Contract's contact fields are fetched from the Customer — the email lives there.
+		frappe.db.set_value("Customer", TEST_CUSTOMER, "email_id", "m@example.com")
 		with patch("ai_saas.saas.provisioning.provision_tenant"):
 			self.contract = frappe.get_doc({
 				"doctype": "Contract", "party_type": "Customer", "party_name": TEST_CUSTOMER,
 				"start_date": add_days(nowdate(), 14), "contract_terms": "Termos M.",
-				"mz_subscription_plan": TEST_PLAN, "mz_tenant": TEST_SLUG, "contact_email": "m@example.com",
+				"mz_subscription_plan": TEST_PLAN, "mz_tenant": TEST_SLUG,
 			}).insert(ignore_permissions=True)
 			self.contract.submit()
 		self.prov = frappe.get_doc({
@@ -79,29 +81,38 @@ class TestMessaging(FrappeTestCase):
 	# ---- D3 ---------------------------------------------------------------------
 
 	def test_nurture_set_retargeted_and_countdown_exists(self):
-		# G1: the seven nurture emails now speak to unfinished signups, not Opportunities.
+		# G1: the nurture emails read the Opportunity — the funnel's ledger — at Form Started.
 		nurture = frappe.get_all(
 			"Notification", filters={"name": ("like", "AI SaaS - Lead Nurture%")},
 			fields=["name", "document_type", "event", "date_changed", "days_in_advance", "condition"],
 		)
 		self.assertEqual(sorted(n.days_in_advance for n in nurture), [0, 3, 10, 20])
 		for n in nurture:
-			self.assertEqual(n.document_type, "MZ Signup")
-			self.assertIn('doc.status == "Started"', n.condition)
-			self.assertEqual(n.date_changed, None if n.event == "New" else "modified")
+			self.assertEqual(n.document_type, "Opportunity")
+			self.assertIn('doc.sales_stage == "Cloud - Form Started"', n.condition)
+			self.assertEqual(n.date_changed, None if n.event == "New" else "mz_stage_since")
 		fields = frappe.get_all("Notification Recipient", filters={"parent": ("like", "AI SaaS - Lead Nurture%")}, pluck="receiver_by_document_field")
-		self.assertEqual(set(fields), {"email"})
+		self.assertEqual(set(fields), {"contact_email"})
+		# G2 / G3: the same shape, off the same anchor, on the stages the lifecycle reports.
+		for prefix, stage, days in (("AI SaaS - Trial Expirado%", "Cloud - Trial Expired", [1, 7, 21]),
+		                            ("AI SaaS - Conta Encerrada%", "Cloud - Closed", [3, 30])):
+			rows = frappe.get_all("Notification", filters={"name": ("like", prefix)},
+			                      fields=["document_type", "event", "date_changed", "days_in_advance", "condition"])
+			self.assertEqual(sorted(r.days_in_advance for r in rows), days)
+			for r in rows:
+				self.assertEqual((r.document_type, r.event, r.date_changed), ("Opportunity", "Days After", "mz_stage_since"))
+				self.assertIn(f'doc.sales_stage == "{stage}"', r.condition)
 		rows = frappe.get_all(
-			"Notification", filters={"name": ("like", "AI SaaS - Trial%")},
+			"Notification", filters={"name": ("like", "AI SaaS - Trial - %")},
 			fields=["name", "event", "date_changed", "days_in_advance", "condition", "document_type"],
 		)
 		self.assertEqual(sorted(r.days_in_advance for r in rows), [0, 1, 2, 3, 7])  # 2 = 'Primeira factura' (Days After creation)
 		for r in rows:
 			expected = ("Contract", "Days After", "creation") if "Primeira factura" in r.name else ("Contract", "Days Before", "start_date")
 			self.assertEqual((r.document_type, r.event, r.date_changed), expected, r.name)
-			self.assertIn('mz_account_phase == "Trial"', r.condition)
+			self.assertNotIn("mz_account_phase", r.condition)  # the phase is derived, never a field
 			self.assertIn("not doc.is_signed", r.condition)
-		roles = frappe.get_all("Notification Recipient", filters={"parent": ("like", "AI SaaS - Trial%")}, pluck="receiver_by_role")
+		roles = frappe.get_all("Notification Recipient", filters={"parent": ("like", "AI SaaS - Trial - %")}, pluck="receiver_by_role")
 		self.assertFalse(any(roles))
 		# The Calendly link is read from MZ SaaS Settings, never hardcoded in a message.
 		self.assertFalse(frappe.db.sql("select 1 from tabNotification where name like 'AI SaaS%%' and message like '%%calendly%%'"))
@@ -124,22 +135,31 @@ class TestMessaging(FrappeTestCase):
 		frappe.db.set_value("Contract", doc.name, "is_signed", 1)
 		self.assertFalse(frappe.safe_eval(notif.condition, None, get_context(frappe.get_doc("Contract", doc.name))))
 
+	@staticmethod
+	def _opportunity_for(signup):
+		"""The (unsaved) Opportunity a signup opens — what the nurture Notifications receive."""
+		return frappe.get_doc({
+			"doctype": "Opportunity", "opportunity_from": "Lead", "sales_stage": "Cloud - Form Started",
+			"contact_email": signup.email, "mz_signup": signup.name, "status": "Open",
+		})
+
 	def test_nurture_message_renders_resume_link(self):
+		from frappe.email.doctype.notification.notification import get_context
+
 		signup = frappe.get_doc({
 			"doctype": "MZ Signup", "full_name": "Teste G1", "email": "g1@example.com",
 			"company_name": "Empresa G1", "subdomain": "g1-teste", "current_step": 2,
 		}).insert(ignore_permissions=True)
+		opp = self._opportunity_for(signup)
 		try:
 			for name in ("AI SaaS - Lead Nurture - Dia 0", "AI SaaS - Lead Nurture - Dia 20"):
 				notif = frappe.get_doc("Notification", name)
-				message = frappe.render_template(notif.message, {"doc": signup, "alert": notif, "comments": None})
+				message = frappe.render_template(notif.message, {"doc": opp, "alert": notif, "comments": None})
 				self.assertIn("/registo?token=" + signup.resume_token, message)
 				self.assertNotIn("{{", message)
-				from frappe.email.doctype.notification.notification import get_context
-				self.assertTrue(frappe.safe_eval(notif.condition, None, get_context(signup)))
-			signup.db_set("status", "Complete")
-			signup.reload()
-			self.assertFalse(frappe.safe_eval(notif.condition, None, get_context(signup)))
+				self.assertTrue(frappe.safe_eval(notif.condition, None, get_context(opp)))
+			opp.sales_stage = "Cloud - Account Created"  # the form was finished: the sequence stops
+			self.assertFalse(frappe.safe_eval(notif.condition, None, get_context(opp)))
 		finally:
 			frappe.delete_doc("MZ Signup", signup.name, force=True, ignore_permissions=True)
 
@@ -152,7 +172,7 @@ class TestMessaging(FrappeTestCase):
 		try:
 			notif = frappe.get_doc("Notification", "AI SaaS - Lead Nurture - Dia 0")
 			self.assertIn("continue quando quiser", notif.subject)
-			message = frappe.render_template(notif.message, {"doc": signup, "alert": notif, "comments": None})
+			message = frappe.render_template(notif.message, {"doc": self._opportunity_for(signup), "alert": notif, "comments": None})
 			self.assertIn("Obrigado por começar o registo", message)
 			self.assertRegex(message, r"(Bom dia|Boa tarde|Boa noite) Teste,")
 			self.assertEqual(message.count("padding:12px 22px"), 1)     # one CTA
@@ -276,7 +296,7 @@ class TestMessaging(FrappeTestCase):
 		sms = frappe.get_doc("Notification", "AI SaaS - SMS Trial Hoje")
 		self.assertEqual((sms.channel, sms.event, sms.days_in_advance, sms.date_changed), ("SMS", "Days Before", 0, "start_date"))
 		self.assertEqual(sms.recipients[0].receiver_by_document_field, "mz_contact_mobile")
-		doc = frappe._dict({"doctype": "Contract", "name": "CON-X", "docstatus": 1, "is_signed": 0, "mz_account_phase": "Trial",
+		doc = frappe._dict({"doctype": "Contract", "name": "CON-X", "docstatus": 1, "is_signed": 0,
 		                    "contact_email": "c@example.com", "mz_contact_mobile": "+258840000000", "party_name": "Empresa X",
 		                    "mz_tenant_url": "x.erp.mozeconomia.co.mz", "start_date": frappe.utils.nowdate()})
 		self.assertTrue(frappe.safe_eval(first.condition, None, get_context(doc)))

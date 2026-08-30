@@ -1,0 +1,80 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block head_include %}
+<link rel="stylesheet" href="/registo/index.css?v={{ asset_version or 0 }}">
+{% endblock %}
+
+{% block page_content %}
+<div class="reg">
+  <img class="reg__logo" src="/assets/erpnext_mz/images/logo.svg" alt="MozEconomia Cloud">
+
+  {% if not valid %}
+    <h1>Ligação inválida</h1>
+    <p class="reg__lead">Esta ligação não é válida ou já expirou. Utilize a ligação do email mais recente,
+      ou fale connosco: <a href="mailto:cloud@mozeconomia.co.mz">cloud@mozeconomia.co.mz</a>.</p>
+
+  {% elif phase not in ("Suspended", "Closed") %}
+    <div class="reg__done">
+      <h1>A sua conta está activa</h1>
+      <p class="reg__lead">Não há nada a reactivar — a conta da {{ customer_name }} está acessível.</p>
+      {% if site_url %}<a class="reg__btn reg__btn--link" href="{{ site_url }}">Entrar na minha conta</a>{% endif %}
+    </div>
+
+  {% else %}
+    <div id="react-form" {% if pending %}hidden{% endif %}>
+      <h1 style="margin-top: 40px;">Quer a sua conta de volta?</h1>
+      <p class="reg__lead">
+        {% if phase == "Closed" %}
+        A conta da {{ customer_name }} foi encerrada, mas os dados estão guardados em cópia de segurança.
+        Peça a reactivação e a nossa equipa repõe a conta exactamente como estava.
+        {% else %}
+        A conta da {{ customer_name }} está suspensa com todos os dados intactos.
+        Peça a reactivação e o seu gestor de conta entra em contacto ainda hoje.
+        {% endif %}
+      </p>
+      <label for="react-message">Quer dizer-nos alguma coisa? (opcional)</label>
+      <textarea id="react-message" rows="3" maxlength="1000"
+        placeholder="Ex.: já regularizámos o pagamento / precisamos de mais tempo para decidir"></textarea>
+      <button class="reg__btn" id="btn-request">Pedir a reactivação</button>
+      <p class="reg__err reg__err--global" id="react-error" hidden></p>
+    </div>
+
+    <div class="reg__done" id="react-done" {% if not pending %}hidden{% endif %}>
+      <h1>Recebemos o seu pedido</h1>
+      <p class="reg__lead">O seu gestor de conta entra em contacto em breve. Se preferir, responda ao email
+        que recebeu ou fale connosco pelo WhatsApp +258 87 4444 645.</p>
+    </div>
+  {% endif %}
+
+  <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
+</div>
+
+<script>
+(function () {
+  var btn = document.getElementById("btn-request");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    btn.disabled = true;
+    var err = document.getElementById("react-error");
+    err.hidden = true;
+    fetch("/api/method/ai_saas.api.reactivation.request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({
+        contract: {{ contract_name | tojson }},
+        token: {{ token | tojson }},
+        message: document.getElementById("react-message").value
+      })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error((res.body && res.body._server_messages) ? "Não foi possível enviar o pedido. Tente novamente." : "Erro");
+        document.getElementById("react-form").hidden = true;
+        document.getElementById("react-done").hidden = false;
+      })
+      .catch(function (e) { err.textContent = e.message || "Erro"; err.hidden = false; btn.disabled = false; });
+  });
+})();
+</script>
+{% endblock %}

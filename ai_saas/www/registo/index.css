@@ -89,6 +89,7 @@ main.page_content {
 }
 
 .reg input,
+.reg textarea,
 .reg select {
   width: 100%;
   padding: 12px 13px;
@@ -99,6 +100,7 @@ main.page_content {
 }
 
 .reg input:focus,
+.reg textarea:focus,
 .reg select:focus {
   outline: none;
   border-color: var(--reg-accent);

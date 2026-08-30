@@ -9,6 +9,14 @@ from frappe.model.document import Document
 
 
 class MZOverdueReview(Document):
+	def onload(self):
+		# The account's phase is derived, never stored: shown here so the person choosing
+		# a status sees what the account is right now.
+		if self.contract:
+			from ai_saas.saas.tenant_lifecycle import account_phase
+
+			self.set_onload("account_phase", account_phase(self.contract))
+
 	def on_update(self):
 		before = self.get_doc_before_save()
 		if before and before.review_status == self.review_status:

@@ -13,6 +13,7 @@ import re
 import frappe
 from frappe.utils import add_days, cint, now_datetime, nowdate, validate_email_address
 
+from ai_saas.saas import crm
 from ai_saas.saas.mz_address import CITY_PROVINCE
 from ai_saas.saas.party import set_customer_primaries
 from ai_saas.saas.provisioning import domain_for, domain_profile
@@ -146,6 +147,8 @@ def _start(full_name, email, phone=None, plan=None, domain=None):
 	})
 	doc.insert(ignore_permissions=True)
 	_supersede_other_live_signups(email, doc.name)
+	if not completed:
+		_enter_crm(doc)
 	frappe.db.commit()
 	if completed and not recently_told:
 		_send_already_registered_email(doc)
@@ -195,6 +198,7 @@ def _update(token, step, data):
 			}
 	doc.current_step = max(cint(doc.current_step) or 1, min(step + 1, 3))
 	doc.save(ignore_permissions=True)
+	_sync_crm(doc)
 	frappe.db.commit()
 	return {"state": "continue", "step": doc.current_step}
 
@@ -400,7 +404,9 @@ def _existing_contact(customer_name, email):
 
 def _enforce_ceilings(doc):
 	s = get_settings()
-	trials = frappe.db.count("Contract", {"docstatus": 1, "mz_account_phase": "Trial"})
+	from ai_saas.saas.tenant_lifecycle import live_trials
+
+	trials = len(live_trials())
 	today_signups = frappe.db.count(
 		"MZ Signup", {"submitted_on": (">=", nowdate()), "status": ("in", ["Submitted", "Provisioning", "Complete"])}
 	)
@@ -425,34 +431,14 @@ def _create_documents(signup):
 
 	from ai_saas.install import _CONTRACT_TEMPLATE_TITLE, TRIAL_CUSTOMER_GROUP
 	from ai_saas.saas.provisioning import apps_for_segment
-	from ai_saas.saas.contract_lifecycle import _get_company
-
 	s = get_settings()
-	company = _get_company()
-	if not company:
-		frappe.throw("Sem empresa por omissão configurada (Global Defaults).")
 
-	# Lead
-	lead_name = frappe.db.get_value("Lead", {"email_id": signup.email}, "name")
-	if not lead_name:
-		lead = frappe.get_doc({
-			"doctype": "Lead", "first_name": signup.full_name, "company_name": signup.company_name,
-			"email_id": signup.email, "mobile_no": signup.phone, "phone": signup.phone,
-			"city": signup.city, "mz_segment": signup.industry, "status": "Lead",
-		})
-		lead.insert(ignore_permissions=True)
-		lead_name = lead.name
-	else:
-		frappe.db.set_value("Lead", lead_name, {"company_name": signup.company_name, "mz_segment": signup.industry,
-		                                       "city": signup.city, "mobile_no": signup.phone})
-
-	# Opportunity — the record D2 advances and F3/F6 mark Lost
-	opp = frappe.get_doc({
-		"doctype": "Opportunity", "opportunity_from": "Lead", "party_name": lead_name, "company": company,
-		"transaction_date": nowdate(), "sales_stage": "Cloud - Account Created",
-		"contact_email": signup.email, "contact_mobile": signup.phone,
-	})
-	opp.insert(ignore_permissions=True)
+	# Lead + Opportunity — entered at step 1 (_enter_crm); a signup flagged as a
+	# duplicate of an account skipped that, so they are created here instead.
+	if not signup.opportunity:
+		_enter_crm(signup, stage=crm.STAGE_ACCOUNT_CREATED)
+	lead_name = signup.lead
+	_sync_crm(signup)
 
 	# Customer — the company is its NUIT. An existing customer of the house (on-prem,
 	# consulting, POS) buying the cloud product is the same customer, not a second one:
@@ -510,8 +496,10 @@ def _create_documents(signup):
 
 	# The Customer's own pointers, so it leaves the funnel addressable: primary contact,
 	# primary address, email and mobile. Nothing sales already filled in is overwritten.
+	# The Contract's contact fields are fetched from the Customer — nothing is copied.
 	set_customer_primaries(customer, contact=contact_name, address=address_name,
 	                       email=signup.email, mobile=signup.phone)
+	frappe.db.set_value("Opportunity", signup.opportunity, "contact_person", contact_name)
 
 	# Contract — unsigned, submitted: the trial begins (B1)
 	slug = signup.subdomain
@@ -520,7 +508,6 @@ def _create_documents(signup):
 		"doctype": "Contract", "party_type": "Customer", "party_name": customer.name,
 		"start_date": add_days(nowdate(), s.trial_length_days), "contract_template": _CONTRACT_TEMPLATE_TITLE,
 		"mz_subscription_plan": signup.plan, "mz_tenant": slug, "mz_domain": domain, "mz_tenant_url": slug + domain,
-		"contact_email": signup.email, "mz_contact_name": signup.full_name, "mz_contact_mobile": signup.phone,
 		"mz_segment": signup.industry,
 		"mz_apps_to_install": [{"app_name": a} for a in apps_for_segment(signup.industry, signup.plan, domain)],
 	}
@@ -534,6 +521,7 @@ def _create_documents(signup):
 	# failure after that point must still leave the signup pointing at what exists.
 	signup.db_set({"lead": lead_name, "customer": customer.name, "contract": contract.name}, update_modified=False)
 	contract.submit()
+	crm.report(signup.opportunity, crm.STAGE_ACCOUNT_CREATED)
 
 	prov = frappe.db.get_value("MZ Tenant Provisioning", {"contract": contract.name}, "name")
 	if not prov:
@@ -549,6 +537,79 @@ def _create_documents(signup):
 	signup.update({"provisioning": prov, "status": "Provisioning"})
 	signup.save(ignore_permissions=True)
 	frappe.db.commit()
+
+
+def _enter_crm(signup, stage=None):
+	"""Step 1 puts the person in the CRM: a Lead (one per email) and an Opportunity at
+	"Form Started" — the record the nurture reads and Sales sees. A second start for the
+	same address re-uses an Opportunity still at that stage (the resume link follows the
+	live signup through mz_signup, and the Dia 0 email goes again with the new link);
+	any other stage belongs to an earlier account, so a fresh Opportunity is opened.
+	`stage` overrides the entry stage for a signup that skipped step 1's entry (a
+	duplicate-of-account signup, or one started before the CRM entry existed): inserted
+	straight at Account Created, it never matches the nurture's "New" trigger."""
+	from ai_saas.saas.contract_lifecycle import _get_company
+
+	lead_name = frappe.db.get_value("Lead", {"email_id": signup.email}, "name")
+	if not lead_name:
+		lead = frappe.get_doc({
+			"doctype": "Lead", "first_name": signup.full_name, "email_id": signup.email,
+			"mobile_no": signup.phone, "phone": signup.phone, "status": "Lead",
+		})
+		lead.insert(ignore_permissions=True)
+		lead_name = lead.name
+
+	opportunity = frappe.db.get_value(
+		"Opportunity",
+		{"opportunity_from": "Lead", "party_name": lead_name, "status": "Open",
+		 "sales_stage": crm.STAGE_FORM_STARTED},
+		"name", order_by="creation desc",
+	)
+	if not opportunity:
+		company = _get_company()
+		if not company:
+			frappe.throw("Sem empresa por omissão configurada (Global Defaults).")
+		opp = frappe.get_doc({
+			"doctype": "Opportunity", "opportunity_from": "Lead", "party_name": lead_name, "company": company,
+			"transaction_date": nowdate(), "sales_stage": stage or crm.STAGE_FORM_STARTED,
+			"contact_email": signup.email, "contact_mobile": signup.phone,
+			"mz_signup": signup.name, "mz_stage_since": now_datetime(),
+		})
+		opp.insert(ignore_permissions=True)
+		opportunity = opp.name
+	else:
+		frappe.db.set_value("Opportunity", opportunity, {"mz_signup": signup.name, "contact_mobile": signup.phone})
+		crm.touch(opportunity)
+		_resend_day_zero(opportunity)
+	signup.db_set({"lead": lead_name, "opportunity": opportunity}, update_modified=False)
+
+
+def _resend_day_zero(opportunity):
+	"""A restart supersedes the older signup, so its resume link is dead: send the
+	"New"-event nurture again, now carrying the live one. Best effort."""
+	name = "AI SaaS - Lead Nurture - Dia 0"
+	if not frappe.db.get_value("Notification", name, "enabled"):
+		return
+	try:
+		frappe.get_doc("Notification", name).send(frappe.get_doc("Opportunity", opportunity))
+	except Exception:
+		frappe.log_error(title="AI SaaS: Dia 0 resend failed", message=frappe.get_traceback())
+
+
+def _sync_crm(signup):
+	"""What the form has learnt so far, onto the Lead; the Opportunity's clock restarts."""
+	if not signup.opportunity:
+		return
+	frappe.db.set_value("Lead", signup.lead, {
+		"first_name": signup.full_name, "company_name": signup.company_name or None,
+		"mz_segment": signup.industry or None, "city": signup.city or None,
+		"mobile_no": signup.phone or None, "phone": signup.phone or None,
+	})
+	frappe.db.set_value("Opportunity", signup.opportunity, {
+		"contact_email": signup.email, "contact_mobile": signup.phone or None,
+		"customer_name": signup.company_name or None,
+	})
+	crm.touch(signup.opportunity)
 
 
 def _default_territory():
