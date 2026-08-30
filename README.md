@@ -238,7 +238,7 @@ System Managers, invoices, logins, size), and matches the control site's Custome
 Subscriptions, Opportunities and Leads to it by site name, NUIT, email, mobile and company name —
 each match labelled with the key that produced it, conflicts listed, never guessed. The result
 (`tenant_inventory_<date>.xlsx`: sheets `sites`, `control_only`, `summary`) is attached to
-**MZ SaaS Settings** for download; the `class` column (`paying`, `debtor_live`, `used_unsigned`,
+**MZ SaaS Settings** for download; the `class` column (`paying`, `debtor`, `cancelled_paid_up`, `used_unsigned`,
 `never_used`, `archived_by_hand`, `unmatched_site`, `unclassified`) is a hint for reading, not a
 decision. Read-only apart from that File; re-running replaces the day's file. Actions come after.
 

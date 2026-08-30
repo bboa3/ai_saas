@@ -47,7 +47,7 @@ SITE_COLUMNS = (
 	"last_login", "invoice_count", "last_invoice_on", "invoice_count_30d", "master_data_count",
 	"last_doc_modified", "db_size_mb", "last_backup_on", "probe_error",
 	"customer", "contract", "is_signed", "plan", "sub_status", "sub_cancelled_on",
-	"invoices", "paid_invoices", "outstanding", "last_paid_on", "opportunity", "sales_stage", "lead", "prov_status",
+	"invoices", "paid_invoices", "outstanding", "last_billed_on", "last_paid_on", "opportunity", "sales_stage", "lead", "prov_status",
 	"match_keys", "match_quality", "conflicts", "class", "class_reason",
 )
 CONTROL_COLUMNS = ("record", "name", "company_name", "nuit", "email", "mobile", "contract", "is_signed",
@@ -312,13 +312,13 @@ def _control_side(customer: str | None, contracts_hit: dict, opps_hit: dict, lea
 			   from `tabSales Invoice` where customer = %s and docstatus = 1 and is_return = 0""",
 			customer, as_dict=True,
 		)[0]
-		out.update(invoices=cint(inv.n), paid_invoices=cint(inv.paid), outstanding=flt(inv.outstanding), last_invoice_on=inv.last)
+		out.update(invoices=cint(inv.n), paid_invoices=cint(inv.paid), outstanding=flt(inv.outstanding), last_billed_on=inv.last)
 		out["last_paid_on"] = frappe.db.get_value(
 			"Payment Entry", {"party_type": "Customer", "party": customer, "docstatus": 1, "payment_type": "Receive"}, "max(posting_date)"
 		)
 		out["lead"] = frappe.db.get_value("Customer", customer, "lead_name")
 	else:
-		out.update(invoices=None, paid_invoices=None, outstanding=None, last_invoice_on=None, last_paid_on=None, lead=None)
+		out.update(invoices=None, paid_invoices=None, outstanding=None, last_billed_on=None, last_paid_on=None, lead=None)
 	if not out["lead"] and not customer and leads_hit:
 		out["lead"] = sorted(leads_hit)[-1]
 
@@ -350,16 +350,20 @@ def _classify(row: dict) -> tuple[str, str]:
 	outstanding = flt(row.get("outstanding"))
 	last_paid = row.get("last_paid_on")
 	paid_recently = bool(last_paid) and getdate(last_paid) >= getdate(add_days(nowdate(), -PAID_RECENTLY_DAYS))
+	last_login = row.get("last_login")
+	active_recently = bool(last_login) and getdate(str(last_login)[:10]) >= getdate(add_days(nowdate(), -30))
+	used = cint(row.get("invoice_count")) or cint(row.get("master_data_count")) or last_login
 	if sub == "Active" and (outstanding == 0 or paid_recently):
-		return "paying", f"subscription Active, outstanding {outstanding:.0f}" + (", paid recently" if paid_recently else "")
-	if sub in ("Cancelled", "Past Due Date", "Unpaid") or outstanding > 0:
-		return "debtor_live", f"subscription {sub or '—'}, outstanding {outstanding:.0f}"
+		return "paying", f"subscription Active, outstanding {outstanding:.0f}" + (", paid recently" if paid_recently else "") + ("" if used else " — site never used")
+	if outstanding > 0:
+		return "debtor", f"subscription {sub or '—'}, outstanding {outstanding:.0f}" + (", still using the site" if active_recently else "")
+	if sub in ("Cancelled", "Past Due Date", "Unpaid"):
+		return "cancelled_paid_up", f"subscription {sub}, nothing owed" + (", still using the site" if active_recently else "") + ("" if used else ", site never used")
 	if not row.get("customer"):
-		return "unmatched_site", "no control-site record matched"
-	used = cint(row.get("invoice_count")) or cint(row.get("master_data_count")) or row.get("last_login")
+		return "unmatched_site", "no control-site record matched" + (f"; {cint(row.get('invoice_count'))} invoices, last login {str(last_login or '—')[:10]}")
 	if not used:
 		return "never_used", "no invoices, no own master data, no customer login"
-	return "used_unsigned", f"{cint(row.get('invoice_count'))} invoices, last login {row.get('last_login') or '—'}, no active subscription"
+	return "used_unsigned", f"{cint(row.get('invoice_count'))} invoices, last login {str(last_login or '—')[:10]}, no subscription ever"
 
 
 # ---------------------------------------------------------------- the inventory
