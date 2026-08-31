@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import add_days, cint, getdate, nowdate
 
 from ai_saas.api import signup
 from ai_saas.install import TRIAL_CUSTOMER_GROUP
@@ -49,6 +50,82 @@ class TestSignup(FrappeTestCase):
 		for s in frappe.get_all("MZ Signup", {"email": EMAIL}, pluck="name"):
 			frappe.delete_doc("MZ Signup", s, force=True, ignore_permissions=True)
 		frappe.db.commit()
+
+	@patch("ai_saas.saas.provisioning.provision_tenant")
+	def test_direct_sale_from_the_desk(self, provision):
+		"""Sales fills the same MZ Signup and clicks Criar Conta: same pipeline, custom
+		trial window, mz_direct on the Contract, ledger born at Account Created — and
+		no nurture email, because the Opportunity never sits at Form Started."""
+		provision.side_effect = self._fake_provision()
+		# The person once started a web signup: an Opportunity sits at Form Started.
+		# The desk sale must reuse it silently — never resend the "finish your
+		# registration" welcome to a venda-directa customer.
+		lead = frappe.get_doc({"doctype": "Lead", "first_name": "Vendedor Directo",
+		                       "email_id": EMAIL, "status": "Lead"}).insert(ignore_permissions=True)
+		frappe.get_doc({
+			"doctype": "Opportunity", "opportunity_from": "Lead", "party_name": lead.name,
+			"company": frappe.db.get_single_value("Global Defaults", "default_company"),
+			"sales_stage": "Cloud - Form Started", "contact_email": EMAIL,
+		}).insert(ignore_permissions=True)
+		doc = frappe.get_doc({
+			"doctype": "MZ Signup", "status": "Started", "current_step": 3,
+			"full_name": "Vendedor Directo", "email": EMAIL, "phone": "+258 84 000 0002",
+			"plan": PLAN, "company_name": COMPANY, "tax_id": "400 76-5432", "industry": self.industry,
+			"address": "Av. do Trabalho, 123, Bairro Central, Maputo",
+			"subdomain": SLUG, "venda_directa": 1, "trial_days": 45,
+		}).insert(ignore_permissions=True)
+		queued = frappe.db.count("Email Queue")
+		with patch("ai_saas.api.signup._alert_ops"):
+			result = signup.create_account_from_desk(doc.name)
+		doc.reload()
+		self.assertEqual(doc.status, "Provisioning")
+		self.assertEqual((doc.tax_id, doc.city), ("400765432", "Maputo"))  # web-form normalisation ran
+		contract = frappe.get_doc("Contract", result["contract"])
+		self.assertEqual(cint(contract.mz_direct), 1)
+		self.assertEqual(getdate(contract.start_date), getdate(add_days(nowdate(), 45)))
+		opp = frappe.get_doc("Opportunity", result["opportunity"])
+		self.assertEqual((opp.sales_stage, opp.status), ("Cloud - Account Created", "Open"))
+		self.assertEqual(frappe.db.count("Email Queue"), queued)  # no Dia 0 resend either
+		self.assertEqual(frappe.db.count("Opportunity", {"contact_email": EMAIL}), 1)  # reused, not duplicated
+		# Criar Conta works exactly once: the signup left "Started", so a second click
+		# is refused and nothing else is created.
+		contracts = frappe.db.count("Contract", {"party_name": doc.customer})
+		self.assertRaisesRegex(frappe.ValidationError, "só um registo em curso",
+		                       signup.create_account_from_desk, doc.name)
+		self.assertEqual(frappe.db.count("Contract", {"party_name": doc.customer}), contracts)
+
+	@patch("ai_saas.saas.provisioning.provision_tenant")
+	def test_direct_sale_failure_marks_failed_and_may_retry(self, provision):
+		"""A crash mid-creation must not leave the signup clickable as if nothing happened:
+		status → Failed (audit trail in `error`), and only a Failed run WITHOUT a contract
+		may be retried — the web path's own rule."""
+		provision.side_effect = self._fake_provision()
+		doc = frappe.get_doc({
+			"doctype": "MZ Signup", "status": "Started", "current_step": 3,
+			"full_name": "Vendedor Directo", "email": EMAIL, "phone": "+258 84 000 0002",
+			"plan": PLAN, "company_name": COMPANY, "tax_id": "400765432", "industry": self.industry,
+			"address": "Av. do Trabalho, 123, Bairro Central, Maputo",
+			"subdomain": SLUG, "venda_directa": 1,
+		}).insert(ignore_permissions=True)
+		with patch("ai_saas.api.signup._create_documents", side_effect=frappe.ValidationError("boom")):
+			self.assertRaises(frappe.ValidationError, signup.create_account_from_desk, doc.name)
+		doc.reload()
+		self.assertEqual(doc.status, "Failed")
+		self.assertIn("boom", doc.error or "")
+		with patch("ai_saas.api.signup._alert_ops"):
+			result = signup.create_account_from_desk(doc.name)  # retry allowed: no contract yet
+		self.assertTrue(result["contract"])
+
+	def test_direct_sale_rejects_guests_and_missing_fields(self):
+		doc = frappe.get_doc({
+			"doctype": "MZ Signup", "status": "Started", "full_name": "Vendedor Directo",
+			"email": EMAIL, "plan": PLAN,
+		}).insert(ignore_permissions=True)
+		self.assertRaisesRegex(frappe.ValidationError, "Preencha", signup.create_account_from_desk, doc.name)
+		# frappe.only_for is bypassed in tests; what must hold is that the method is
+		# whitelisted for logged-in users only — never a guest endpoint.
+		self.assertIn(signup.create_account_from_desk, frappe.whitelisted)
+		self.assertNotIn(signup.create_account_from_desk, frappe.guest_methods)
 
 	@staticmethod
 	def _fake_provision(status="Queued"):
@@ -397,7 +474,8 @@ class TestSignup(FrappeTestCase):
 	@patch("ai_saas.saas.provisioning.provision_tenant")
 	def test_ceiling_refuses_and_keeps_started(self, provision):
 		token = self._walk_to_step3()
-		real = signup.get_settings(); real.max_signups_per_day = 0
+		real = signup.get_settings()
+		real.max_signups_per_day = 0
 		with patch("ai_saas.api.signup.get_settings", return_value=real), patch("ai_saas.api.signup._alert_ops"):
 			with self.assertRaises(frappe.ValidationError):
 				signup._submit(token)

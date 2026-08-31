@@ -1,6 +1,6 @@
 """SISLOG Multipay HTTP client.
 
-API spec: P17023X – MPAG@SISLOG REST API Reference (SISLOG_20240803)
+API spec: P17023X — MPAG@SISLOG REST API Reference (SISLOG_20240803)
 
 Reference request:  POST {base_url}/mobile/reference/request
 Status query:       POST {base_url}/mobile/status/get  (Option 1, polling fallback)

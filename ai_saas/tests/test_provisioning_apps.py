@@ -96,7 +96,8 @@ class TestInstallStep(FrappeTestCase):
 		     patch.object(P, "get_db_root_user", return_value="root"), patch.object(P, "get_db_root_password", return_value="x"), \
 		     patch.object(P, "_get_site_admin_password", return_value="y"), patch.object(P, "get_bench_cmd", return_value="bench"), \
 		     patch.object(frappe.db, "commit"):
-			os_.path.exists.return_value = False; os_.path.join.return_value = "/x"
+			os_.path.exists.return_value = False
+			os_.path.join.return_value = "/x"
 			P._step_create_site(prov)
 		cmd = run.call_args_list[0].args[0]
 		flags = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--install-app"]

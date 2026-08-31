@@ -224,6 +224,45 @@ bench --site erp.local execute ai_saas.saas.tenant_lifecycle.process_lifecycle  
 
 ---
 
+## Direct sales (Venda Directa)
+
+Accounts negotiated outside the funnel enter through the **same MZ Signup**: Sales fills it in
+the desk (address and city included — parsed into the Billing Address exactly as on the web),
+sets *Venda Directa* (defaulted on desk-created records) and, when the negotiation needs room,
+*Período Experimental (dias)*, then clicks **Criar Conta** → `api/signup.create_account_from_desk`
+(System Manager / Sales Manager only) runs the web form's own validations and the same pipeline:
+Customer, Contact, Address, submitted unsigned Contract (`mz_direct = 1`), provisioning, delivery
+email, Opportunity born at `Cloud - Account Created` — so the G1 nurture never fires (it needs
+`Form Started`). `mz_direct` on the Contract silences the trial countdown and Pós-Contrato mails
+and removes the account from `live_trials()` (no auto-suspend at `start_date`, no trial slot,
+no probe); **dunning and overdue suspension stay on** — billing is billing. Suspension of a
+direct account is a human decision through `MZ Overdue Review`.
+
+For a direct account whose site **already exists** (a holding's own instance, a yearly deal paid
+outside), the signup path would try to build a new site — use instead:
+
+```bash
+bench --site <site> execute ai_saas.saas.legacy_migration.create_account \
+  --kwargs "{'customer_name': 'Kaleny Holding, S.A.', 'site': 'erp.kalenyholding.com',
+             'plan': 'Profissional Mensal - MozEconomia Cloud', 'start_date': '2026-09-07', 'dry_run': 1}"
+```
+
+which registers the provisioning row first (nothing re-provisions, no delivery email), submits a
+signed `mz_direct` Contract and lets the normal hook create the Subscription — billing starts at
+`max(start_date, today)`, never back-dated. Without `plan`: a signed, engine-silent account (the
+holding/partner shape). And to bring an **existing signed account** (Customer + Contract +
+Subscription + hand-made site) into the lifecycle without re-creating anything:
+
+```bash
+bench --site <site> execute ai_saas.saas.legacy_migration.activate \
+  --kwargs "{'contracts': '@sheet.csv', 'dry_run': 1}"   # or 'CON-...,CON-...'
+```
+
+per contract: provisioning row (Active), `mz_linked_subscription` + `mz_billing_start` from the
+existing Subscription, `mz_direct = 1`, Customer primaries, Opportunity → Activated/Converted.
+Hooks never run (no second Subscription, no invoice today, no customer email); a contract with
+zero non-cancelled Subscriptions is registered unlinked, more than one is skipped for a human.
+
 ## Inventory of legacy accounts
 
 Before touching accounts the old funnel created, look at them:

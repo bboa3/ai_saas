@@ -11,6 +11,8 @@ from ai_saas.saas import legacy_migration as lm
 from ai_saas.tests.helpers import cleanup_contract, ensure_test_plan, make_test_customer
 
 SITE = "inventario-teste.erp.mozeconomia.co.mz"
+SITE2 = "conta-directa-teste.erp.mozeconomia.co.mz"
+DIRECT_CUSTOMER = "Conta Directa Teste, LDA"
 EMAIL = "inventario-teste@example.com"
 NUIT = "400123456"
 
@@ -45,7 +47,20 @@ class TestLegacyMigration(FrappeTestCase):
 		frappe.db.commit()
 
 	def tearDown(self):
+		for prov in frappe.get_all("MZ Tenant Provisioning", {"site_name": ("in", [SITE, SITE2])}, pluck="name"):
+			frappe.delete_doc("MZ Tenant Provisioning", prov, force=True, ignore_permissions=True)
+		for c in frappe.get_all("Contract", {"party_name": DIRECT_CUSTOMER}, pluck="name"):
+			cleanup_contract(c)
 		cleanup_contract(self.contract.name)
+		for party in (self.customer, DIRECT_CUSTOMER):
+			for sub in frappe.get_all("Subscription", {"party": party}, pluck="name"):
+				frappe.delete_doc("Subscription", sub, force=True, ignore_permissions=True)
+			for opp in frappe.get_all("Opportunity", {"party_name": party}, pluck="name"):
+				frappe.delete_doc("Opportunity", opp, force=True, ignore_permissions=True)
+		for dt in ("Contact", "Address"):
+			for n in frappe.get_all("Dynamic Link", {"link_doctype": "Customer", "link_name": DIRECT_CUSTOMER, "parenttype": dt}, pluck="parent"):
+				frappe.delete_doc(dt, n, force=True, ignore_permissions=True)
+		frappe.delete_doc("Customer", DIRECT_CUSTOMER, force=True, ignore_permissions=True)
 		for f in frappe.get_all("File", filters={"attached_to_doctype": "MZ SaaS Settings", "file_name": ("like", "tenant_inventory_%")}, pluck="name"):
 			frappe.delete_doc("File", f, force=True, ignore_permissions=True)
 		frappe.delete_doc("Customer", self.customer, force=True, ignore_permissions=True)
@@ -116,3 +131,113 @@ class TestLegacyMigration(FrappeTestCase):
 		self.assertIn("site", row["match_keys"])
 		names = [r["name"] for r in lm._control_only({"customers": {self.customer}, "opportunities": set(), "leads": set()})]
 		self.assertNotIn(self.customer, names)
+
+	def _live_sites(self, *sites):
+		return [{"site": x, "site_dir": "live", "path": "/nowhere", "maintenance_mode": 0, "last_backup_on": None} for x in sites]
+
+	def _submit_contract(self, signed=False):
+		with patch("ai_saas.saas.provisioning.provision_tenant"):
+			self.contract.submit()
+		if signed:
+			frappe.db.set_value("Contract", self.contract.name, "is_signed", 1, update_modified=False)
+		frappe.db.commit()
+
+	def _make_subscription(self, start):
+		from ai_saas.saas.contract_lifecycle import _get_company
+		from ai_saas.tests.helpers import TEST_PLAN
+
+		return frappe.get_doc({
+			"doctype": "Subscription", "party_type": "Customer", "party": self.customer,
+			"company": _get_company(), "start_date": start,
+			"generate_invoice_at": "Beginning of the current subscription period",
+			"submit_invoice": 1, "days_until_due": 7, "plans": [{"plan": TEST_PLAN, "qty": 1}],
+		}).insert(ignore_permissions=True)
+
+	def test_activate_links_the_records_it_finds_and_sends_nothing(self):
+		from frappe.utils import add_days, cint, getdate, nowdate
+
+		sub = self._make_subscription(add_days(nowdate(), -30))
+		self._submit_contract(signed=True)
+		queued, subs = frappe.db.count("Email Queue"), frappe.db.count("Subscription")
+
+		with patch.object(lm, "_sites", return_value=self._live_sites(SITE)):
+			dry = lm.activate(self.contract.name, dry_run=1)
+			self.assertIn("[dry-run]", dry[0])
+			self.assertFalse(frappe.db.exists("MZ Tenant Provisioning", {"contract": self.contract.name}))
+			lm.activate(self.contract.name, dry_run=0)
+			again = lm.activate(self.contract.name, dry_run=0)
+
+		prov = frappe.db.get_value("MZ Tenant Provisioning", {"contract": self.contract.name}, ["status", "site_name"], as_dict=True)
+		self.assertEqual((prov.status, prov.site_name), ("Active", SITE))
+		c = frappe.db.get_value("Contract", self.contract.name, ["mz_linked_subscription", "mz_billing_start", "mz_direct"], as_dict=True)
+		self.assertEqual((c.mz_linked_subscription, getdate(c.mz_billing_start), cint(c.mz_direct)), (sub.name, getdate(sub.start_date), 1))
+		opp = frappe.db.get_value("Opportunity", {"party_name": self.customer}, ["sales_stage", "status"], as_dict=True)
+		self.assertEqual((opp.sales_stage, opp.status), ("Cloud - Activated", "Converted"))
+		self.assertEqual(frappe.db.count("Email Queue"), queued)  # nothing mailed to anyone
+		self.assertEqual(frappe.db.count("Subscription"), subs)  # never a second subscription
+		self.assertEqual(len(again), 1)  # idempotent second run, same single digest line
+
+		from ai_saas.saas.tenant_lifecycle import account_phase
+		self.assertEqual(account_phase(self.contract.name), "Active")
+
+	def test_activate_refuses_what_it_should(self):
+		self._submit_contract(signed=False)
+		with patch.object(lm, "_sites", return_value=self._live_sites(SITE)):
+			out = lm.activate(self.contract.name, dry_run=0)  # unsigned
+		self.assertIn("IGNORADO", out[0])
+		self.assertFalse(frappe.db.exists("MZ Tenant Provisioning", {"contract": self.contract.name}))
+
+	def test_create_account_registers_first_and_never_backdates(self):
+		from frappe.utils import add_days, cint, getdate, nowdate
+
+		queued = frappe.db.count("Email Queue")
+		start = add_days(nowdate(), 7)
+		ident = _ident(company={"company_name": DIRECT_CUSTOMER, "tax_id": "400999888", "email": None, "phone_no": None},
+		               people=[{"full_name": "Gestor Directo", "email": "gestor-directo@example.com", "mobile_no": "+258 84 000 0003", "last_login": None}])
+		with patch.object(lm, "_sites", return_value=self._live_sites(SITE, SITE2)), 		     patch.object(lm, "_probe_identity", return_value=ident):
+			from ai_saas.tests.helpers import TEST_PLAN
+
+			line = lm.create_account(DIRECT_CUSTOMER, SITE2, TEST_PLAN, start, dry_run=1)
+			self.assertIn("[dry-run]", line)
+			self.assertFalse(frappe.db.exists("Customer", {"customer_name": DIRECT_CUSTOMER}))
+			result = lm.create_account(DIRECT_CUSTOMER, SITE2, TEST_PLAN, start, dry_run=0)
+			self.assertRaisesRegex(frappe.ValidationError, "já pertence",
+			                       lm.create_account, DIRECT_CUSTOMER, SITE2, None, None, None, 0)
+
+		contract = frappe.get_doc("Contract", result["contract"])
+		self.assertEqual((contract.docstatus, cint(contract.is_signed), cint(contract.mz_direct)), (1, 1, 1))
+		sub = frappe.get_doc("Subscription", result["subscription"])
+		self.assertEqual(getdate(sub.start_date), getdate(start))
+		self.assertFalse(frappe.db.exists("Sales Invoice", {"customer": result["customer"], "docstatus": ("<", 2)}))
+		prov = frappe.db.get_value("MZ Tenant Provisioning", {"contract": contract.name}, "status")
+		self.assertEqual(prov, "Active")
+		self.assertEqual(frappe.db.count("Email Queue"), queued)  # no delivery email: nothing provisioned
+		opp = frappe.db.get_value("Opportunity", {"party_name": result["customer"]}, ["sales_stage", "status"], as_dict=True)
+		self.assertEqual((opp.sales_stage, opp.status), ("Cloud - Activated", "Converted"))
+
+	def test_create_account_without_plan_is_engine_silent_but_converted(self):
+		"""The holding/partner shape: no Subscription, no billing — but the ledger still
+		says what the account is (Activated/Converted), which on_contract_submitted alone
+		would skip for a plan-less contract."""
+		with patch.object(lm, "_sites", return_value=self._live_sites(SITE2)), \
+		     patch.object(lm, "_probe_identity", return_value=_ident()):
+			result = lm.create_account(DIRECT_CUSTOMER, SITE2, None, None, "parceiro@example.com", dry_run=0)
+		self.assertIsNone(result["subscription"])
+		self.assertFalse(frappe.db.exists("Subscription", {"party": result["customer"]}))
+		opp = frappe.db.get_value("Opportunity", {"party_name": result["customer"]}, ["sales_stage", "status"], as_dict=True)
+		self.assertEqual((opp.sales_stage, opp.status), ("Cloud - Activated", "Converted"))
+		from ai_saas.saas.tenant_lifecycle import account_phase, live_trials
+		self.assertEqual(account_phase(result["contract"]), "Active")
+		self.assertNotIn(result["contract"], [r.name for r in live_trials()])
+
+	def test_direct_contracts_are_invisible_to_the_trial_engine(self):
+		from ai_saas.saas.tenant_lifecycle import live_trials
+
+		self._submit_contract(signed=False)
+		frappe.get_doc({
+			"doctype": "MZ Tenant Provisioning", "contract": self.contract.name,
+			"tenant_slug": "inventario-teste", "site_name": SITE, "status": "Active",
+		}).insert(ignore_permissions=True)
+		self.assertIn(self.contract.name, [r.name for r in live_trials()])
+		frappe.db.set_value("Contract", self.contract.name, "mz_direct", 1, update_modified=False)
+		self.assertNotIn(self.contract.name, [r.name for r in live_trials()])

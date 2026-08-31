@@ -106,14 +106,15 @@ class TestTenantLifecycle(FrappeTestCase):
 		with patch("frappe.db.get_single_value", return_value=None):
 			s = tenant_lifecycle.get_settings()
 		self.assertEqual((s.overdue_days_to_suspend, s.grace_days_to_archive, s.auto_suspend, s.auto_archive), (33, 30, 0, 0))
-		armed = lambda doctype, field: 1 if field in ("auto_suspend", "auto_archive") else None
+		def armed(doctype, field):
+			return 1 if field in ("auto_suspend", "auto_archive") else None
 		with patch("frappe.db.get_single_value", side_effect=armed):
 			s = tenant_lifecycle.get_settings()
 		self.assertEqual((s.auto_suspend, s.auto_archive), (1, 1))
 
 	@patch("ai_saas.saas.tenant_lifecycle.run_cmd")
 	def test_reactivate_billing_customer_needs_settled_debt_or_force(self, run_cmd):
-		doc, prov = self._make_trial(start_date=add_days(nowdate(), -60))
+		doc, _prov = self._make_trial(start_date=add_days(nowdate(), -60))
 		frappe.db.set_value("Contract", doc.name, "is_signed", 1, update_modified=False)
 		tenant_lifecycle.suspend(doc.name)
 		with patch("ai_saas.saas.tenant_lifecycle._has_overdue_invoice", return_value=True):
@@ -194,7 +195,7 @@ class TestTenantLifecycle(FrappeTestCase):
 	def test_every_act_reports_to_the_opportunity(self, run_cmd):
 		"""The Opportunity is the ledger: expiry, overdue, reactivation and closure each
 		land on it as a stage — and an expired trial stays Open, so G2 can still talk to it."""
-		doc, prov = self._make_trial(start_date=add_days(nowdate(), -1))
+		doc, _prov = self._make_trial(start_date=add_days(nowdate(), -1))
 		opp = self._make_opportunity(doc.name)
 
 		tenant_lifecycle.suspend(doc.name, cause="trial")
@@ -218,7 +219,7 @@ class TestTenantLifecycle(FrappeTestCase):
 	def test_a_converted_opportunity_still_reports(self, run_cmd):
 		"""Signature marks the Opportunity Converted; a paying account is still suspended
 		for non-payment and archived, and both must land on that same record."""
-		doc, prov = self._make_trial(start_date=add_days(nowdate(), -1))
+		doc, _prov = self._make_trial(start_date=add_days(nowdate(), -1))
 		opp = self._make_opportunity(doc.name)
 		crm.report(opp, crm.STAGE_ACTIVATED, status="Converted")
 		frappe.db.set_value("Contract", doc.name, "is_signed", 1, update_modified=False)
@@ -233,7 +234,7 @@ class TestTenantLifecycle(FrappeTestCase):
 		from ai_saas.api import reactivation
 		from ai_saas.saas.activation import get_activation_token
 
-		doc, prov = self._make_trial(start_date=add_days(nowdate(), -1))
+		doc, _prov = self._make_trial(start_date=add_days(nowdate(), -1))
 		token = get_activation_token(doc.name)
 
 		# Nothing to reactivate while the site is up.
@@ -262,7 +263,7 @@ class TestTenantLifecycle(FrappeTestCase):
 
 	@patch("ai_saas.saas.tenant_lifecycle.run_cmd")
 	def test_archive_refuses_unsuspended(self, run_cmd):
-		doc, prov = self._make_trial(start_date=add_days(nowdate(), 7))
+		doc, _prov = self._make_trial(start_date=add_days(nowdate(), 7))
 		with self.assertRaises(frappe.ValidationError):
 			tenant_lifecycle.archive(doc.name)
 		run_cmd.assert_not_called()
@@ -339,7 +340,7 @@ class TestTenantLifecycle(FrappeTestCase):
 	# ---- F4: the review queue executes ------------------------------------------
 
 	def test_review_queue_dispatches_suspend(self):
-		doc, prov = self._make_trial(start_date=add_days(nowdate(), 7))
+		doc, _prov = self._make_trial(start_date=add_days(nowdate(), 7))
 		review = frappe.get_doc({
 			"doctype": "MZ Overdue Review",
 			"customer": TEST_CUSTOMER,
@@ -391,7 +392,7 @@ class TestLifecycleMail(TestTenantLifecycle):
 		self.assertNotIn("{{", mail["message"])
 
 	def test_suspended_for_overdue_names_the_invoice(self):
-		doc, prov = self._make_trial(start_date=add_days(nowdate(), -1))
+		doc, _prov = self._make_trial(start_date=add_days(nowdate(), -1))
 		mail = self._ctx_and_send("suspended", doc, cause="overdue", invoice="ACC-SINV-2026-99999")
 		self.assertIn("ACC-SINV-2026-99999", mail["message"])
 		self.assertIn("regularize a factura", mail["message"])
@@ -421,7 +422,7 @@ class TestLifecycleMail(TestTenantLifecycle):
 
 	def test_no_recipient_is_logged_not_raised(self):
 		from ai_saas.saas import lifecycle_mail
-		doc, prov = self._make_trial(start_date=add_days(nowdate(), -1))
+		doc, _prov = self._make_trial(start_date=add_days(nowdate(), -1))
 		frappe.db.set_value("Contract", doc.name, "contact_email", "", update_modified=False)
 		frappe.db.set_value("Customer", TEST_CUSTOMER, "email_id", "", update_modified=False)
 		with patch("ai_saas.saas.lifecycle_mail.frappe.sendmail") as sendmail:

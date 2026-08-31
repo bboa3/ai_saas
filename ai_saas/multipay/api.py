@@ -2,7 +2,7 @@
 
 All guest-facing methods validate the HMAC token before touching the database.
 
-Webhook (Option 2 – preferred):
+Webhook (Option 2 — preferred):
   SISLOG sends a GET request to the configured callback URL.
   URL must be registered in your SISLOG account as:
       https://<your-site>/api/method/ai_saas.multipay.api.payment_callback?token=<callback_token>
@@ -14,9 +14,9 @@ Webhook (Option 2 – preferred):
 import json
 
 import frappe
+from erpnext_mz.qr_code.qr_generator import validate_document_hash as _validate_token
 from frappe import _
 from frappe.utils import cint
-from erpnext_mz.qr_code.qr_generator import validate_document_hash as _validate_token
 
 
 def _validate_invoice_token(invoice_name: str, token: str) -> bool:
@@ -278,12 +278,12 @@ def payment_callback() -> dict:
 	if reported_value is not None:
 		pr_grand_total = frappe.db.get_value("Payment Request", pr_name, "grand_total") or 0
 		try:
-			if int(reported_value) != int(round(pr_grand_total * 100)):
+			if int(reported_value) != round(pr_grand_total * 100):
 				frappe.log_error(
 					title="Multipay callback: amount mismatch",
 					message=(
 						f"transactionId={transaction_id} "
-						f"expected={int(round(pr_grand_total * 100))} "
+						f"expected={round(pr_grand_total * 100)} "
 						f"got={reported_value}"
 					),
 				)

@@ -319,11 +319,12 @@ class TestCommunicationLanguage(FrappeTestCase):
 	"""One voice (docs/communication-copy-review.md): time-of-day greeting to a person,
 	account-manager signature, Mozambican spelling, one inbox for relationship emails."""
 
-	BILLING = {"AI SaaS - Fatura Emitida", "AI SaaS - Nota de Crédito", "AI SaaS - Recibo de Pagamento",
-	           "AI SaaS - SMS Fatura Emitida"}
+	BILLING = frozenset({"AI SaaS - Fatura Emitida", "AI SaaS - Nota de Crédito", "AI SaaS - Recibo de Pagamento",
+	                     "AI SaaS - SMS Fatura Emitida"})
 
 	def test_greeting_follows_site_hour_and_first_name(self):
 		from datetime import datetime
+
 		from ai_saas.utils.jinja import mz_first_name, mz_greeting
 		for hour, word in ((7, "Bom dia"), (11, "Bom dia"), (12, "Boa tarde"), (18, "Boa tarde"), (19, "Boa noite"), (23, "Boa noite")):
 			with patch("frappe.utils.now_datetime", return_value=datetime(2026, 8, 28, hour, 5)):

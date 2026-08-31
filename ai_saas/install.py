@@ -1,4 +1,5 @@
 import json
+
 import frappe
 
 
@@ -658,22 +659,47 @@ def ensure_scheduler_plans():
 	settings.save()
 
 
+_SIGNUP_CLIENT_SCRIPT = r"""
+frappe.ui.form.on("MZ Signup", {
+	onload(frm) {
+		// A signup opened by hand in the desk is a direct sale until someone says otherwise;
+		// records created by /registo never run this (the API inserts them server-side).
+		if (frm.is_new()) frm.set_value("venda_directa", 1);
+	},
+	refresh(frm) {
+		if (frm.is_new() || frm.doc.status !== "Started") return;
+		frm.add_custom_button(__("Criar Conta"), () => {
+			frappe.confirm(
+				__("Criar a conta agora? O site será provisionado e o email de entrega enviado ao cliente."),
+				() => frappe.call({
+					method: "ai_saas.api.signup.create_account_from_desk",
+					args: { signup: frm.doc.name },
+					freeze: true,
+					freeze_message: __("A criar a conta..."),
+				}).then(() => frm.reload_doc())
+			);
+		}).addClass("btn-primary");
+	},
+});
+"""
+
+
 def _sync_client_scripts():
-	"""Create or update the AI SaaS client script on Contract."""
-	script_name = "AI SaaS - Contract"
-	if frappe.db.exists("Client Script", script_name):
-		frappe.db.set_value("Client Script", script_name, {
-			"script": _CONTRACT_CLIENT_SCRIPT,
-			"enabled": 1,
-		})
-	else:
-		frappe.get_doc({
-			"doctype": "Client Script",
-			"name": script_name,
-			"dt": "Contract",
-			"script": _CONTRACT_CLIENT_SCRIPT,
-			"enabled": 1,
-		}).insert(ignore_permissions=True)
+	"""Create or update the AI SaaS client scripts (Contract buttons; MZ Signup direct-sales entry)."""
+	for script_name, dt, script in (
+		("AI SaaS - Contract", "Contract", _CONTRACT_CLIENT_SCRIPT),
+		("AI SaaS - MZ Signup", "MZ Signup", _SIGNUP_CLIENT_SCRIPT),
+	):
+		if frappe.db.exists("Client Script", script_name):
+			frappe.db.set_value("Client Script", script_name, {"script": script, "enabled": 1})
+		else:
+			frappe.get_doc({
+				"doctype": "Client Script",
+				"name": script_name,
+				"dt": dt,
+				"script": script,
+				"enabled": 1,
+			}).insert(ignore_permissions=True)
 
 
 # Stages of the old web-form flow that nothing sets any more; dropped when unused.
@@ -870,7 +896,7 @@ def ensure_child_doctypes():
 			{"fieldname": "tipo_dore", "fieldtype": "Select", "label": "Tipo de Dor", "reqd": 1, "in_list_view": 1,
 				"options": "\nOperacional\nFinanceira\nFiscal\nComercial"},
 			{"fieldname": "descricao", "fieldtype": "Text", "label": "Descrição", "in_list_view": 1},
-			{"fieldname": "severidade_1_5", "fieldtype": "Int", "label": "Severidade (1–5)", "in_list_view": 1,
+			{"fieldname": "severidade_1_5", "fieldtype": "Int", "label": "Severidade (1-5)", "in_list_view": 1,
 				"description": "Escala de 1 a 5"},
 			{"fieldname": "frequencia", "fieldtype": "Select", "label": "Frequência", "in_list_view": 1,
 				"options": "\nCritica\nConstante\nFrequente\nMensal\nTrimestral\nSazonal\nAnual\nOcasional\nRara"},
@@ -899,7 +925,7 @@ def ensure_child_doctypes():
 			{"fieldname": "roi_estimado_meses", "fieldtype": "Int", "label": "ROI Estimado (meses)"},
 			{"fieldname": "preco_min_mzn", "fieldtype": "Currency", "label": "Preço Mín (MZN)"},
 			{"fieldname": "preco_max_mzn", "fieldtype": "Currency", "label": "Preço Máx (MZN)"},
-			{"fieldname": "confianca_match_1_5", "fieldtype": "Int", "label": "Confiança de Match (1–5)",
+			{"fieldname": "confianca_match_1_5", "fieldtype": "Int", "label": "Confiança de Match (1-5)",
 				"description": "Escala de 1 a 5"},
 			{"fieldname": "pre_requisitos_sistema", "fieldtype": "Small Text", "label": "Pré-requisitos do Sistema"},
 		],

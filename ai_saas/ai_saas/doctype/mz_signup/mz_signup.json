@@ -31,6 +31,8 @@
   "section_account",
   "subdomain",
   "mz_domain",
+  "venda_directa",
+  "trial_days",
   "terms_accepted",
   "section_links",
   "lead",
@@ -199,6 +201,20 @@
    "label": "Domínio",
    "options": ".erp.mozeconomia.co.mz\n.erp.curati.co.mz\n.erp.kalenyholding.com",
    "default": ".erp.mozeconomia.co.mz"
+  },
+  {
+   "default": "0",
+   "description": "Conta negociada fora do funil (venda directa): sem emails de nurture, contagem do período experimental nem suspensão automática — copiado para o Contrato ao criar a conta.",
+   "fieldname": "venda_directa",
+   "fieldtype": "Check",
+   "label": "Venda Directa"
+  },
+  {
+   "description": "Substitui os dias por omissão de MZ SaaS Settings só para esta conta — a janela de configuração/negociação, não uma promoção.",
+   "fieldname": "trial_days",
+   "fieldtype": "Int",
+   "label": "Período Experimental (dias)",
+   "non_negative": 1
   },
   {
    "fieldname": "terms_accepted",

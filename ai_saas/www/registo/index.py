@@ -33,9 +33,9 @@ def get_context(context):
 
 
 def build_context(context, domain):
-	from ai_saas.api.signup import _state_payload
-
 	import os
+
+	from ai_saas.api.signup import _state_payload
 
 	domain = domain_for(domain)
 	form = FORMS[domain]

@@ -1,6 +1,7 @@
 """One-time migration: load segment_map.ai_n8n_config.json into AI N8N Configuration (Single DocType)."""
 
 import json
+
 import frappe
 
 DATA_FILE = "/srv/frappe/frappe-bench/segment_map.ai_n8n_config.json"

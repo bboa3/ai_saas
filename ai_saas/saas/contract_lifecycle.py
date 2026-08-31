@@ -27,6 +27,10 @@ def on_contract_submitted(doc, method=None):
 	if doc.is_signed:
 		_move_customer_to_commercial_group(doc)
 		crm.report_for_contract(doc.name, crm.STAGE_ACTIVATED, status="Converted")
+	else:
+		# Desk-created accounts enter the ledger here; the signup path reports the same
+		# stage a moment later, which report() treats as a no-op.
+		crm.report_for_contract(doc.name, crm.STAGE_ACCOUNT_CREATED)
 	_maybe_provision_tenant(doc)
 
 

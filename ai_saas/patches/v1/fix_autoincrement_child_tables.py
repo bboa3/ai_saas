@@ -9,7 +9,6 @@ both for every affected table on any site where migrate is run.
 
 import frappe
 
-
 # Maps table name → (sequence name, doctype name)
 # Tipo de Negocio has no JSON file (managed by ensure_child_doctypes) so its
 # meta autoname also needs to be updated explicitly.

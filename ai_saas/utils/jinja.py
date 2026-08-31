@@ -10,7 +10,7 @@ import re
 
 import frappe
 
-from ai_saas.saas.activation import get_activation_url, get_reactivation_url  # noqa: F401
+from ai_saas.saas.activation import get_activation_url, get_reactivation_url
 
 __all__ = ["get_activation_url", "get_reactivation_url", "mz_first_name", "mz_greeting", "mz_signature"]
 

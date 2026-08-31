@@ -1,6 +1,7 @@
 """One-time migration: load segment_map.data.json into Segment Intelligence Map DocType."""
 
 import json
+
 import frappe
 
 DATA_FILE = "/srv/frappe/frappe-bench/segment_map.data.json"

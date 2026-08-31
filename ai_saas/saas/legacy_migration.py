@@ -47,7 +47,7 @@ SITE_COLUMNS = (
 	"last_login", "invoice_count", "last_invoice_on", "invoice_count_30d", "master_data_count",
 	"last_doc_modified", "db_size_mb", "last_backup_on", "probe_error",
 	"customer", "contract", "is_signed", "plan", "sub_status", "sub_cancelled_on",
-	"invoices", "paid_invoices", "outstanding", "last_billed_on", "last_paid_on", "opportunity", "sales_stage", "lead", "prov_status",
+	"invoices", "paid_invoices", "outstanding", "last_billed_on", "last_paid_on", "opportunity", "sales_stage", "lead", "prov_status", "mz_direct",
 	"match_keys", "match_quality", "conflicts", "class", "class_reason",
 )
 CONTROL_COLUMNS = ("record", "name", "company_name", "nuit", "email", "mobile", "contract", "is_signed",
@@ -76,7 +76,8 @@ def _sites() -> list[dict]:
 
 
 def _is_tenant_site(name: str) -> bool:
-	return any(name.endswith(d) for d in DOMAINS)
+	# The bare domain itself is a site too (a holding's own instance: erp.kalenyholding.com).
+	return any(name.endswith(d) or name == d.lstrip(".") for d in DOMAINS)
 
 
 def _maintenance_mode(path) -> int:
@@ -196,8 +197,9 @@ def _match(site: str, ident: dict) -> dict:
 		if party and party.party_type == "Customer":
 			hit("customers", party.party_name, "site")
 	for s in frappe.get_all("MZ Signup", filters={"subdomain": k["slug"]}, fields=["name", "customer", "lead", "contract", "opportunity"]):
-		hit("signups", s.name, "site"); hit("customers", s.customer, "site"); hit("leads", s.lead, "site")
-		hit("contracts", s.contract, "site"); hit("opportunities", s.opportunity, "site")
+		for kind, name in (("signups", s.name), ("customers", s.customer), ("leads", s.lead),
+		                   ("contracts", s.contract), ("opportunities", s.opportunity)):
+			hit(kind, name, "site")
 
 	# NUIT
 	if k["nuit"]:
@@ -205,8 +207,9 @@ def _match(site: str, ident: dict) -> dict:
 			if _norm_nuit(frappe.db.get_value("Customer", c, "tax_id")) == k["nuit"]:
 				hit("customers", c, "nuit")
 		for s in frappe.get_all("MZ Signup", filters={"tax_id": ("like", f"%{k['nuit']}%")}, fields=["name", "customer", "lead", "contract", "opportunity"]):
-			hit("signups", s.name, "nuit"); hit("customers", s.customer, "nuit"); hit("leads", s.lead, "nuit")
-			hit("contracts", s.contract, "nuit"); hit("opportunities", s.opportunity, "nuit")
+			for kind, name in (("signups", s.name), ("customers", s.customer), ("leads", s.lead),
+			                   ("contracts", s.contract), ("opportunities", s.opportunity)):
+				hit(kind, name, "nuit")
 
 	# emails
 	for email in k["emails"]:
@@ -221,8 +224,9 @@ def _match(site: str, ident: dict) -> dict:
 		for o in frappe.get_all("Opportunity", filters={"contact_email": email}, pluck="name"):
 			hit("opportunities", o, "email")
 		for s in frappe.get_all("MZ Signup", filters={"email": email}, fields=["name", "customer", "lead", "contract", "opportunity"]):
-			hit("signups", s.name, "email"); hit("customers", s.customer, "email"); hit("leads", s.lead, "email")
-			hit("contracts", s.contract, "email"); hit("opportunities", s.opportunity, "email")
+			for kind, name in (("signups", s.name), ("customers", s.customer), ("leads", s.lead),
+			                   ("contracts", s.contract), ("opportunities", s.opportunity)):
+				hit(kind, name, "email")
 		for c in frappe.get_all("Contract", filters={"docstatus": ("<", 2), "contact_email": email}, fields=["name", "party_name", "party_type"]):
 			hit("contracts", c.name, "email")
 			if c.party_type == "Customer":
@@ -284,12 +288,12 @@ def _control_side(customer: str | None, contracts_hit: dict, opps_hit: dict, lea
 	if customer:
 		contract = frappe.db.get_value(
 			"Contract", {"party_type": "Customer", "party_name": customer, "docstatus": ("<", 2)},
-			["name", "is_signed", "mz_subscription_plan", "mz_linked_subscription", "mz_tenant", "docstatus"],
+			["name", "is_signed", "mz_subscription_plan", "mz_linked_subscription", "mz_tenant", "docstatus", "mz_direct"],
 			as_dict=True, order_by="docstatus desc, creation desc",
 		)
 	if not customer and contracts_hit:
 		# No Customer matched, but a Contract did (by site or email): take the account from it.
-		contract = frappe.db.get_value("Contract", sorted(contracts_hit)[-1], ["name", "is_signed", "mz_subscription_plan", "mz_linked_subscription", "mz_tenant", "docstatus"], as_dict=True)
+		contract = frappe.db.get_value("Contract", sorted(contracts_hit)[-1], ["name", "is_signed", "mz_subscription_plan", "mz_linked_subscription", "mz_tenant", "docstatus", "mz_direct"], as_dict=True)
 		party = frappe.db.get_value("Contract", contract.name, ["party_type", "party_name"], as_dict=True) if contract else None
 		customer = party.party_name if party and party.party_type == "Customer" else None
 	out["customer"] = customer
@@ -297,6 +301,7 @@ def _control_side(customer: str | None, contracts_hit: dict, opps_hit: dict, lea
 	out["is_signed"] = cint(contract.is_signed) if contract else None
 	out["plan"] = contract.mz_subscription_plan if contract else None
 	out["prov_status"] = frappe.db.get_value("MZ Tenant Provisioning", {"contract": contract.name}, "status") if contract else None
+	out["mz_direct"] = cint(contract.mz_direct) if contract else None
 
 	sub = None
 	if contract and contract.mz_linked_subscription:
@@ -522,3 +527,237 @@ def inventory(attach: int = 1) -> dict:
 	if url:
 		print(f"\n{url}")
 	return {"file_url": url, "summary": data["summary"], "sites": len(data["sites"]), "control_only": len(data["control_only"])}
+
+
+# ---------------------------------------------------------------- phase 2: acting
+
+def _contract_list(contracts) -> list[str]:
+	"""A comma list, a Python list, or "@file.csv" (column `contract`)."""
+	if isinstance(contracts, (list, tuple)):
+		return [c.strip() for c in contracts if c and str(c).strip()]
+	contracts = str(contracts or "").strip()
+	if contracts.startswith("@"):
+		import csv
+
+		with open(contracts[1:], newline="") as f:
+			return sorted({r["contract"].strip() for r in csv.DictReader(f) if (r.get("contract") or "").strip()})
+	return [c.strip() for c in contracts.split(",") if c.strip()]
+
+
+def _live_site_for(doc) -> str | None:
+	"""The live site directory this contract points at — from its own fields only."""
+	candidates = [doc.mz_tenant_url] if doc.mz_tenant_url else []
+	if doc.mz_tenant:
+		from ai_saas.saas.provisioning import domain_for
+
+		candidates.append(doc.mz_tenant + domain_for(doc.mz_domain))
+	live = {s["site"] for s in _sites() if s["site_dir"] == "live"}
+	for site in candidates:
+		if site in live:
+			return site
+	return None
+
+
+def _register_provisioning(contract_doc, site: str) -> str:
+	"""The row that makes the account visible to the lifecycle. Inserting one runs no
+	command and sends nothing (the doctype has no hooks; only Queued-ish rows are retried)."""
+	existing = frappe.db.get_value("MZ Tenant Provisioning", {"contract": contract_doc.name}, "name")
+	if existing:
+		return existing
+	row = frappe.get_doc({
+		"doctype": "MZ Tenant Provisioning", "contract": contract_doc.name,
+		"tenant_slug": contract_doc.mz_tenant or site.split(".")[0], "site_name": site,
+		"status": "Active", "customer_name": contract_doc.party_name,
+		"contact_email": contract_doc.contact_email,
+		"provisioned_at": contract_doc.creation,
+		"log": f"{nowdate()} registado pela migração do funil antigo (legacy_migration)",
+	})
+	row.insert(ignore_permissions=True)
+	return row.name
+
+
+def _report_activated(customer: str, contract_name: str) -> str:
+	"""The ledger entry for a signed legacy account: existing Opportunity moved to
+	Activated/Converted, or one created already there so the ledger is complete."""
+	from ai_saas.saas import crm
+
+	opportunity = crm.find_opportunity(contract_name)
+	if not opportunity:
+		from ai_saas.saas.contract_lifecycle import _get_company
+
+		opp = frappe.get_doc({
+			"doctype": "Opportunity", "opportunity_from": "Customer", "party_name": customer,
+			"company": _get_company(), "transaction_date": nowdate(),
+			"sales_stage": crm.STAGE_ACTIVATED,
+		})
+		opp.insert(ignore_permissions=True)
+		opportunity = opp.name
+	crm.report(opportunity, crm.STAGE_ACTIVATED, status="Converted")
+	return opportunity
+
+
+def activate(contracts, dry_run: int = 1):
+	"""Bring signed legacy accounts into the lifecycle, reusing every existing record.
+
+	Per contract: provisioning row (status Active), Contract linked to its existing
+	Subscription (mz_linked_subscription, mz_billing_start, plan/tenant fields filled
+	where empty, mz_direct = 1), Customer primaries + commercial group, Opportunity at
+	Activated/Converted. All writes via db_set — the signature hooks must NOT run
+	(they would create a second Subscription and invoice today). No customer email.
+
+		bench --site <site> execute ai_saas.saas.legacy_migration.activate \
+			--kwargs "{'contracts': '@sheet.csv', 'dry_run': 1}"
+	"""
+	from ai_saas.saas.alerts import notify_ops
+	from ai_saas.saas.contract_lifecycle import _move_customer_to_commercial_group
+	from ai_saas.saas.party import ensure_customer_primaries
+	from ai_saas.saas.tenant_lifecycle import _attempt
+
+	dry_run = cint(dry_run)
+	lines = []
+
+	def plan_for(name):
+		doc = frappe.get_doc("Contract", name)
+		if doc.docstatus != 1 or not doc.is_signed or doc.party_type != "Customer":
+			return None, f"{name}: IGNORADO — precisa de contrato submetido e assinado de um Customer."
+		site = _live_site_for(doc)
+		if not site:
+			return None, f"{name}: IGNORADO — nenhum site vivo encontrado (mz_tenant/mz_tenant_url)."
+		subs = frappe.get_all(
+			"Subscription",
+			filters={"party_type": "Customer", "party": doc.party_name, "status": ("!=", "Cancelled")},
+			fields=["name", "start_date"], order_by="creation desc",
+		)
+		if len(subs) > 1:
+			return None, f"{name}: IGNORADO — {len(subs)} subscrições activas para {doc.party_name}; decidir à mão."
+		return (doc, site, subs[0] if subs else None), None
+
+	def act(doc, site, sub):
+		prov = _register_provisioning(doc, site)
+		updates = {"mz_direct": 1}
+		if sub:
+			updates["mz_linked_subscription"] = sub.name
+			if not doc.mz_billing_start:
+				updates["mz_billing_start"] = sub.start_date
+			if not doc.mz_subscription_plan:
+				plan = frappe.db.get_value("Subscription Plan Detail", {"parent": sub.name}, "plan")
+				if plan:
+					updates["mz_subscription_plan"] = plan
+		if not doc.mz_tenant_url:
+			updates["mz_tenant_url"] = site
+		if not doc.mz_tenant:
+			updates["mz_tenant"] = site.split(".")[0]
+		doc.db_set(updates, update_modified=False)
+		ensure_customer_primaries(doc.party_name)
+		_move_customer_to_commercial_group(frappe._dict(party_name=doc.party_name))
+		opportunity = _report_activated(doc.party_name, doc.name)
+		lines.append(
+			f"{doc.name}: {site} → prov {prov}, subscrição {sub.name if sub else '— (nenhuma ligada)'}, "
+			f"oportunidade {opportunity}"
+		)
+
+	for name in _contract_list(contracts):
+		planned, problem = plan_for(name)
+		if problem:
+			lines.append(problem)
+			continue
+		doc, site, sub = planned
+		if dry_run:
+			lines.append(
+				f"{name}: [dry-run] site {site}, subscrição {sub.name if sub else '— (nenhuma: não liga)'}, "
+				f"prov {'existe' if frappe.db.exists('MZ Tenant Provisioning', {'contract': name}) else 'a criar'}"
+			)
+			continue
+		_attempt(lines, name, lambda doc=doc, site=site, sub=sub: act(doc, site, sub))
+
+	digest = "\n".join(lines) or "nada a fazer"
+	print(digest)
+	if not dry_run and lines:
+		notify_ops("Migração de contas do funil antigo", "<br>".join(frappe.utils.escape_html(x) for x in lines))
+	return lines
+
+
+def create_account(customer_name, site, plan=None, start_date=None, email=None, dry_run: int = 1):
+	"""A direct account whose site already exists (a holding's own instance, a yearly
+	deal paid outside): register the provisioning row FIRST — so the submit hook's
+	provision_tenant no-ops — then create/reuse Customer and Contact and submit a
+	Contract already signed. With `plan`, the normal hook creates the Subscription
+	(billing starts at max(start_date, today) — never back-dated); without it, the
+	engine-silent CCM/partner shape. The delivery email is never sent (nothing provisions).
+	"""
+	from ai_saas.saas import crm
+	from ai_saas.saas.contract_lifecycle import _get_company
+
+	dry_run = cint(dry_run)
+	live = {s["site"] for s in _sites() if s["site_dir"] == "live"}
+	if site not in live:
+		frappe.throw(f"O site {site} não existe vivo neste bench.")
+	if plan and not frappe.db.exists("Subscription Plan", plan):
+		frappe.throw(f"Plano desconhecido: {plan}")
+	taken = frappe.db.get_value("MZ Tenant Provisioning", {"site_name": site}, "contract")
+	if taken:
+		frappe.throw(f"O site {site} já pertence ao contrato {taken} — use activate().")
+
+	ident = _probe_identity(site)
+	responsible = (ident.get("people") or [{}])[0]
+	contact_email = email or responsible.get("email") or (ident.get("company") or {}).get("email")
+	if dry_run:
+		line = (f"[dry-run] {customer_name} @ {site}: customer "
+		        f"{'existe' if frappe.db.exists('Customer', {'customer_name': customer_name}) else 'a criar'}, "
+		        f"contacto {contact_email or '—'}, plano {plan or '— (sem subscrição)'}, início {start_date or nowdate()}")
+		print(line)
+		return line
+
+	customer = frappe.db.get_value("Customer", {"customer_name": customer_name}, "name")
+	if not customer:
+		customer = frappe.get_doc({
+			"doctype": "Customer", "customer_name": customer_name, "customer_type": "Company",
+			"customer_group": frappe.db.get_single_value("Selling Settings", "customer_group")
+			or frappe.db.get_value("Customer Group", {"is_group": 0}, "name"),
+			"territory": frappe.db.get_single_value("Selling Settings", "territory")
+			or frappe.db.get_value("Territory", {"is_group": 0}, "name"),
+			"tax_id": _norm_nuit((ident.get("company") or {}).get("tax_id")) or None,
+		}).insert(ignore_permissions=True).name
+	if contact_email and not frappe.db.get_value("Customer", customer, "customer_primary_contact"):
+		from ai_saas.saas.party import set_customer_primaries
+
+		contact = frappe.get_doc({
+			"doctype": "Contact", "first_name": responsible.get("full_name") or customer_name,
+			"is_primary_contact": 1,
+			"email_ids": [{"email_id": contact_email, "is_primary": 1}],
+			"phone_nos": [{"phone": responsible.get("mobile_no"), "is_primary_mobile_no": 1}]
+			if responsible.get("mobile_no") else [],
+			"links": [{"link_doctype": "Customer", "link_name": customer}],
+		}).insert(ignore_permissions=True)
+		set_customer_primaries(customer, contact=contact.name, email=contact_email,
+		                       mobile=responsible.get("mobile_no"))
+
+	contract = frappe.get_doc({
+		"doctype": "Contract", "party_type": "Customer", "party_name": customer,
+		"start_date": start_date or nowdate(), "is_signed": 1, "signed_on": frappe.utils.now_datetime(),
+		"mz_direct": 1, "mz_subscription_plan": plan, "mz_tenant": site.split(".")[0],
+		"mz_tenant_url": site,
+		"contract_terms": "Contrato de venda directa — negociado e assinado fora do sistema.",
+	})
+	contract.insert(ignore_permissions=True)
+	_register_provisioning(contract, site)
+	if not crm.find_opportunity(contract.name):
+		frappe.get_doc({
+			"doctype": "Opportunity", "opportunity_from": "Customer", "party_name": customer,
+			"company": _get_company(), "transaction_date": nowdate(),
+			"sales_stage": crm.STAGE_ACCOUNT_CREATED,
+		}).insert(ignore_permissions=True)
+	contract.submit()
+	if not plan:
+		# on_contract_submitted returns before the ledger and the group move when there is
+		# no plan (nothing to bill, nothing to provision) — a plan-less direct account
+		# (holding/partner) is still a converted customer, so record it here.
+		from ai_saas.saas.contract_lifecycle import _move_customer_to_commercial_group
+
+		_move_customer_to_commercial_group(frappe._dict(party_name=customer))
+		_report_activated(customer, contract.name)
+	frappe.db.commit()
+	result = {"customer": customer, "contract": contract.name,
+	          "subscription": frappe.db.get_value("Contract", contract.name, "mz_linked_subscription")}
+	print(result)
+	return result

@@ -335,7 +335,7 @@ def live_trials(fields=("name",), names=None, extra_conditions="", values=None):
 		SELECT {cols}
 		FROM `tabContract` c
 		JOIN `tabMZ Tenant Provisioning` p ON p.contract = c.name
-		WHERE c.docstatus = 1 AND c.is_signed = 0 AND p.status = 'Active'
+		WHERE c.docstatus = 1 AND c.is_signed = 0 AND IFNULL(c.mz_direct, 0) = 0 AND p.status = 'Active'
 		{where} {extra_conditions}
 		ORDER BY c.creation
 		""",

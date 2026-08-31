@@ -184,7 +184,7 @@ class TestUsageSignals(FrappeTestCase):
 		self.assertEqual(usage_signals.evaluate_signals(self._row(), silent), "")
 
 		# An earlier snapshot with only a login (looked around once) is still not "was active".
-		looked = frappe.get_doc({
+		frappe.get_doc({
 			"doctype": "MZ Tenant Usage Snapshot", "contract": self.contract.name, "site_name": self.prov.site_name,
 			"snapshot_date": add_days(nowdate(), -11), "probe_ok": 1, "invoice_count": 0,
 			"last_login": add_days(nowdate(), -11) + " 09:00:00",

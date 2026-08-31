@@ -7,9 +7,14 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, nowdate
 
-from ai_saas.saas import provisioning
-from ai_saas.saas import tenant_lifecycle
-from ai_saas.tests.helpers import BASIC_PLAN, TEST_PLAN, cleanup_contract, ensure_test_plan, make_test_customer
+from ai_saas.saas import provisioning, tenant_lifecycle
+from ai_saas.tests.helpers import (
+	BASIC_PLAN,
+	TEST_PLAN,
+	cleanup_contract,
+	ensure_test_plan,
+	make_test_customer,
+)
 
 TEST_CUSTOMER = "_Test Cliente AI SaaS SCH"
 SLUG = "sch-teste"

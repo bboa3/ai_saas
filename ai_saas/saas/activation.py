@@ -14,9 +14,8 @@ the Multipay pages: HMAC-SHA256(encryption_key, "Contract|<name>")[:16].
 import re
 
 import frappe
-from frappe.utils import get_url, now_datetime
-
 from erpnext_mz.qr_code.qr_generator import _generate_validation_hash, validate_document_hash
+from frappe.utils import get_url, now_datetime
 
 from ai_saas.saas.lifecycle_mail import send_lifecycle_email
 

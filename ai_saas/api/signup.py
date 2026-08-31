@@ -362,6 +362,64 @@ GENERIC_REFUSAL = (
 )
 
 
+@frappe.whitelist(methods=["POST"])
+def create_account_from_desk(signup):
+	"""Direct sales (decision 2026-08-31): Sales fills the same MZ Signup in the desk —
+	usually with Venda Directa and a negotiation-sized trial window — and this creates
+	the account through the exact pipeline /registo uses: same validations, same
+	documents, same provisioning and delivery email. Never a guest endpoint."""
+	frappe.only_for(("System Manager", "Sales Manager"))
+	doc = frappe.get_doc("MZ Signup", signup)
+	# Same retry rule as the web path: a Failed run that created no Contract may try again.
+	if doc.status == "Failed" and not doc.contract:
+		doc.status = "Started"
+	if doc.status != "Started":
+		frappe.throw(f"Este registo está em '{doc.status}' — só um registo em curso pode criar a conta.")
+
+	labels = {"full_name": "nome do responsável", "email": "email", "plan": "plano",
+	          "company_name": "nome da empresa", "tax_id": "NUIT", "address": "endereço", "subdomain": "subdomínio"}
+	missing = [label for field, label in labels.items() if not str(doc.get(field) or "").strip()]
+	if missing:
+		frappe.throw("Preencha antes de criar a conta: " + ", ".join(missing) + ".")
+
+	# The exact validations the web form enforces, step by step; normalised values kept.
+	for step, fieldnames in STEP_FIELDS.items():
+		values = {f: doc.get(f) for f in fieldnames}
+		values["terms_accepted"] = 1  # o contrato é assinado fora do sistema
+		_validate_step(step, values)
+		doc.update(values)
+	doc.city = _resolve_city(doc.city, doc.address)
+	if not doc.city:
+		frappe.throw("Indique a cidade — não foi possível lê-la do endereço.")
+
+	duplicate = _find_duplicate(doc)
+	if duplicate:
+		frappe.throw(duplicate + ".")
+
+	# One click creates one account. Take the row lock and flip the status before any
+	# document exists: a second click — even from another tab, waiting on this lock —
+	# finds the record no longer Started and is refused above on its own run.
+	if frappe.db.get_value("MZ Signup", doc.name, "status", for_update=True) not in ("Started", "Failed"):
+		frappe.throw("Este registo já está a criar a conta.")
+	doc.status = "Submitted"
+	doc.submitted_on = now_datetime()
+	doc.save(ignore_permissions=True)
+	frappe.db.commit()
+	try:
+		_create_documents(doc)
+	except Exception:
+		frappe.db.rollback()
+		doc.reload()
+		doc.status = "Failed"
+		doc.error = frappe.get_traceback()[-2000:]
+		doc.save(ignore_permissions=True)
+		frappe.db.commit()
+		frappe.log_error(title=f"AI SaaS: venda directa {doc.name} failed", message=frappe.get_traceback())
+		raise
+	return {"status": doc.status, "contract": doc.contract, "provisioning": doc.provisioning,
+	        "opportunity": doc.opportunity}
+
+
 def _find_duplicate(doc):
 	"""What must never exist twice is a **cloud account for the same company**, and the
 	company is its NUIT.
@@ -506,7 +564,8 @@ def _create_documents(signup):
 	domain = domain_for(signup.mz_domain)
 	contract_fields = {
 		"doctype": "Contract", "party_type": "Customer", "party_name": customer.name,
-		"start_date": add_days(nowdate(), s.trial_length_days), "contract_template": _CONTRACT_TEMPLATE_TITLE,
+		"start_date": add_days(nowdate(), cint(signup.get("trial_days")) or s.trial_length_days),
+		"contract_template": _CONTRACT_TEMPLATE_TITLE, "mz_direct": cint(signup.get("venda_directa")),
 		"mz_subscription_plan": signup.plan, "mz_tenant": slug, "mz_domain": domain, "mz_tenant_url": slug + domain,
 		"mz_segment": signup.industry,
 		"mz_apps_to_install": [{"app_name": a} for a in apps_for_segment(signup.industry, signup.plan, domain)],
@@ -580,7 +639,12 @@ def _enter_crm(signup, stage=None):
 	else:
 		frappe.db.set_value("Opportunity", opportunity, {"mz_signup": signup.name, "contact_mobile": signup.phone})
 		crm.touch(opportunity)
-		_resend_day_zero(opportunity)
+		if stage is None:
+			# Only a step-1 restart resends the welcome (the older resume link is dead).
+			# Reached with a stage — a desk sale or a duplicate-account submit whose email
+			# once started a web signup — the account is being created right now: no
+			# "finish your registration" mail.
+			_resend_day_zero(opportunity)
 	signup.db_set({"lead": lead_name, "opportunity": opportunity}, update_modified=False)
 
 

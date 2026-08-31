@@ -8,7 +8,7 @@ import subprocess
 import frappe
 from frappe.utils.password import get_decrypted_password
 
-from ai_saas.saas.alerts import notify_ops, ops_alert_recipients  # noqa: F401 — re-exported for callers
+from ai_saas.saas.alerts import notify_ops, ops_alert_recipients
 
 _DEFAULT_BENCH_PATH = "/home/frappe/frappe-bench"
 _DEFAULT_BENCH_CMD = "/usr/local/bin/bench"
@@ -48,7 +48,7 @@ PROVISION_TIMEOUT = 1200  # 20 min — bench new-site + app installs
 WIZARD_TIMEOUT = 300
 
 # Which apps a tenant gets (decision 2026-08-28): the base on every tenant, plus what the
-# lead's segment declares (Segment Intelligence Map › Aplicações). Base apps go on
+# lead's segment declares (Segment Intelligence Map > Aplicações). Base apps go on
 # `bench new-site`; segment apps are installed one by one afterwards, so a failing extra
 # never costs the customer the account.
 BASE_APPS = ("erpnext", "erpnext_mz")
@@ -106,7 +106,8 @@ def apps_for_segment(segment=None, plan=None, domain=None) -> list:
 	seen, out = set(), []
 	for a in [*INSTALL_BEFORE_MZ, *BASE_APPS, *wanted]:
 		if a in wanted and a in bench_apps and a not in seen:
-			seen.add(a); out.append(a)
+			seen.add(a)
+			out.append(a)
 	return out
 
 
