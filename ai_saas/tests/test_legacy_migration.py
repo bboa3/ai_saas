@@ -109,7 +109,8 @@ class TestLegacyMigration(FrappeTestCase):
 		self.assertEqual(c({"site_dir": "live", "customer": "X", "invoice_count": 3})[0], "used_unsigned")
 
 	def test_inventory_attaches_one_file_and_writes_nothing_else(self):
-		sites = [{"site": SITE, "site_dir": "live", "path": "/nowhere", "maintenance_mode": 0, "last_backup_on": None}]
+		sites = [{"site": SITE, "site_dir": "live", "path": "/nowhere", "maintenance_mode": 0, "last_backup_on": None},
+		         {"site": SITE, "site_dir": "archived", "path": "/nowhere2", "maintenance_mode": 0, "last_backup_on": None}]
 		versions = frappe.db.count("Version")
 		patches = (
 			patch.object(lm, "_sites", return_value=sites),
@@ -119,8 +120,10 @@ class TestLegacyMigration(FrappeTestCase):
 		with patches[0], patches[1], patches[2]:
 			result = lm.inventory()
 			result2 = lm.inventory()
-			row = lm.build()["sites"][0]
-		self.assertEqual(result["sites"], 1)
+			rows = lm.build()["sites"]
+		row = rows[0]
+		self.assertEqual(rows[1]["class"], "stale_archived_copy")
+		self.assertEqual(result["sites"], 2)
 		self.assertTrue(result["file_url"].endswith(".xlsx"))
 		self.assertEqual(result2["file_url"], result["file_url"])
 		files = frappe.get_all("File", filters={"attached_to_doctype": "MZ SaaS Settings", "file_name": ("like", "tenant_inventory_%")})

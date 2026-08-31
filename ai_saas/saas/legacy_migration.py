@@ -471,6 +471,14 @@ def build() -> dict:
 			matched["opportunities"].add(row["opportunity"])
 		if row.get("lead"):
 			matched["leads"].add(row["lead"])
+	# A directory can exist twice — live in sites/ and an old copy in archived/sites/.
+	# The live row is the account; the archived twin is a leftover to clean, not a
+	# closed account, and must never read as archived_by_hand.
+	live_names = {r["site"] for r in site_rows if r["site_dir"] == "live"}
+	for r in site_rows:
+		if r["site_dir"] == "archived" and r["site"] in live_names:
+			r["class"] = "stale_archived_copy"
+			r["class_reason"] = "o site está VIVO em sites/ — esta pasta em archived/sites é uma cópia antiga (remover depois de confirmar as datas)"
 	control_rows = _control_only(matched)
 	summary = defaultdict(int)
 	for r in site_rows:
