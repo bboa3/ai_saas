@@ -32,7 +32,7 @@
     "meta_description": null,
     "meta_image": null,
     "meta_title": null,
-    "modified": "2026-08-19 00:41:01.669523",
+    "modified": "2026-09-01 09:10:00.000000",
     "module": "CRM",
     "name": "cloud-feedback",
     "payment_button_help": null,
@@ -90,7 +90,7 @@
         "precision": "",
         "read_only": 0,
         "read_only_depends_on": null,
-        "reqd": 1,
+        "reqd": 0,
         "show_in_filter": 0
       },
       {
@@ -112,7 +112,7 @@
         "precision": "",
         "read_only": 0,
         "read_only_depends_on": null,
-        "reqd": 1,
+        "reqd": 0,
         "show_in_filter": 0
       },
       {
@@ -134,7 +134,7 @@
         "precision": "",
         "read_only": 0,
         "read_only_depends_on": null,
-        "reqd": 1,
+        "reqd": 0,
         "show_in_filter": 0
       },
       {
