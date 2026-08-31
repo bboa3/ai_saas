@@ -5,11 +5,11 @@ stamping test (no invoice: billing start is in the future); provisioning is patc
 from unittest.mock import patch
 
 import frappe
-from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, getdate, nowdate
 
 from ai_saas.saas import activation
 from ai_saas.saas.contract_lifecycle import compute_billing_start
+from ai_saas.tests.helpers import FunnelTestCase
 
 TEST_CUSTOMER = "_Test Cliente AI SaaS E"
 TEST_PLAN = "Premium Mensal - MozEconomia Cloud"
@@ -17,38 +17,14 @@ OTHER_PLAN = "Premium Anual - MozEconomia Cloud"
 TEST_SLUG = "e1-teste"
 
 
-class TestActivation(FrappeTestCase):
-	def setUp(self):
-		from ai_saas.tests.helpers import ensure_test_plan
-		ensure_test_plan()
-		if not frappe.db.exists("Customer", TEST_CUSTOMER):
-			frappe.get_doc({
-				"doctype": "Customer",
-				"customer_name": TEST_CUSTOMER,
-				"customer_type": "Company",
-				"customer_group": frappe.db.get_value("Customer Group", {"is_group": 0}, "name"),
-				"territory": frappe.db.get_value("Territory", {"is_group": 0}, "name"),
-			}).insert(ignore_permissions=True)
-		self._contracts, self._subs, self._addresses = [], [], []
-		frappe.db.commit()
+class TestActivation(FunnelTestCase):
+	CUSTOMER = TEST_CUSTOMER
 
 	def tearDown(self):
-		for name in self._contracts:
-			if not frappe.db.exists("Contract", name):
-				continue
-			for p in frappe.get_all("MZ Tenant Provisioning", {"contract": name}, pluck="name"):
-				frappe.delete_doc("MZ Tenant Provisioning", p, force=True, ignore_permissions=True)
-			sub = frappe.db.get_value("Contract", name, "mz_linked_subscription")
-			doc = frappe.get_doc("Contract", name)
-			if doc.docstatus == 1:
-				doc.cancel()
-			frappe.delete_doc("Contract", name, force=True, ignore_permissions=True)
-			if sub and frappe.db.exists("Subscription", sub):
-				frappe.delete_doc("Subscription", sub, force=True, ignore_permissions=True)
+		# activation creates a Billing Address through the Customer's Dynamic Links
 		for a in frappe.get_all("Dynamic Link", {"link_doctype": "Customer", "link_name": TEST_CUSTOMER, "parenttype": "Address"}, pluck="parent"):
 			frappe.delete_doc("Address", a, force=True, ignore_missing=True, ignore_permissions=True)
-		frappe.delete_doc("Customer", TEST_CUSTOMER, force=True, ignore_missing=True, ignore_permissions=True)
-		frappe.db.commit()
+		super().tearDown()
 
 	def _make_trial(self, start_date, prov_status="Active"):
 		with patch("ai_saas.saas.provisioning.provision_tenant"):
@@ -61,7 +37,7 @@ class TestActivation(FrappeTestCase):
 				"mz_subscription_plan": TEST_PLAN,
 				"mz_tenant": TEST_SLUG,
 			}).insert(ignore_permissions=True)
-			self._contracts.append(doc.name)
+			self.track("Contract", doc.name)
 			doc.submit()
 		frappe.get_doc({
 			"doctype": "MZ Tenant Provisioning", "contract": doc.name, "tenant_slug": TEST_SLUG,

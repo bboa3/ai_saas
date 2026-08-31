@@ -79,7 +79,7 @@ class TestBillingMonitor(FrappeTestCase):
 
 	def test_followup_respects_threshold_and_dedups(self):
 		real = frappe._dict(overdue_followup_days=7)
-		with patch("ai_saas.saas.tenant_lifecycle.get_settings", return_value=real):
+		with patch("ai_saas.saas.billing_monitor.get_settings", return_value=real):
 			billing_monitor._create_followup_tasks([self._invoice(6)])
 			self.assertEqual(frappe.db.count("ToDo", {"reference_type": "Contract", "reference_name": self.contract.name}), 0)
 			billing_monitor._create_followup_tasks([self._invoice(7)])

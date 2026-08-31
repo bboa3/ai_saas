@@ -7,9 +7,10 @@ is logged, and the caller's work is not undone by it.
 
 import frappe
 
+from ai_saas.saas.settings import get_settings
+
 
 def ops_alert_recipients() -> list:
-	from ai_saas.saas.tenant_lifecycle import get_settings
 
 	configured = get_settings().ops_alert_recipients
 	if configured:

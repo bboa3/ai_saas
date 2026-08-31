@@ -19,6 +19,7 @@ from frappe.utils import add_days, date_diff, getdate, nowdate
 
 from ai_saas.saas import crm
 from ai_saas.saas.provisioning import ProvisioningError, get_bench_cmd, run_cmd_capture
+from ai_saas.saas.settings import get_settings
 
 PROBE_TIMEOUT = 60
 STAGE_ENGAGED = crm.STAGE_TRIAL_ENGAGED
@@ -95,19 +96,26 @@ SIGNAL_LABELS = {"Engaged": "🔥 Quente", "Cooling": "🌡 A arrefecer", "Cold"
 
 def usage_report_rows(date=None) -> list:
 	"""Today's snapshot per trial contract, with the commercial context the team reads."""
+	from ai_saas.saas.tenant_lifecycle import live_trials
+
 	date = date or nowdate()
+	trials = {t.name: t for t in live_trials(fields=("name", "party_name", "start_date"))}
+	if not trials:
+		return []
 	rows = frappe.db.sql(
 		"""select s.contract, s.site_name, s.probe_ok, s.error, s.invoice_count, s.invoice_days_7d,
 		          s.active_users_7d, s.master_data_count, s.other_docs_30d, s.last_login,
-		          s.engagement_score, s.`signal`, c.party_name, c.start_date
+		          s.engagement_score, s.`signal`
 		   from `tabMZ Tenant Usage Snapshot` s
-		   join `tabContract` c on c.name = s.contract
-		   join `tabMZ Tenant Provisioning` p on p.contract = c.name
-		   where s.snapshot_date = %s and c.docstatus = 1 and c.is_signed = 0 and p.status = 'Active'
-		   order by s.engagement_score desc, c.start_date asc""",
-		(date,),
+		   where s.snapshot_date = %(date)s and s.contract in %(trials)s
+		   order by s.engagement_score desc""",
+		{"date": date, "trials": tuple(trials)},
 		as_dict=True,
 	)
+	for r in rows:
+		r.party_name = trials[r.contract].party_name
+		r.start_date = trials[r.contract].start_date
+	rows.sort(key=lambda r: (-(r.engagement_score or 0), str(r.start_date)))
 	for r in rows:
 		r.days_left = date_diff(r.start_date, date)
 		opp = crm.find_opportunity(r.contract)
@@ -125,7 +133,6 @@ def usage_report_rows(date=None) -> list:
 def send_daily_usage_report(date=None) -> bool:
 	"""One email to the sales team after the sweep: every trial, its numbers, its signal.
 	Nothing is sent on a day with no trials. Returns whether an email was queued."""
-	from ai_saas.saas.tenant_lifecycle import get_settings
 
 	date = date or nowdate()
 	rows = usage_report_rows(date)

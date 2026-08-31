@@ -13,6 +13,11 @@ before_migrate = "ai_saas.install.before_migrate"
 after_migrate = "ai_saas.install.after_migrate"
 before_tests = "ai_saas.tests.helpers.before_tests"
 
+override_doctype_class = {
+	# An empty rendered body means "do not send" — see overrides/notification.py.
+	"Notification": "ai_saas.overrides.notification.SilentWhenEmptyNotification",
+}
+
 doc_events = {
 	"Contract": {
 		"on_submit": "ai_saas.saas.contract_lifecycle.on_contract_submitted",

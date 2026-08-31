@@ -107,7 +107,7 @@ class TestSignup(FrappeTestCase):
 			"address": "Av. do Trabalho, 123, Bairro Central, Maputo",
 			"subdomain": SLUG, "venda_directa": 1,
 		}).insert(ignore_permissions=True)
-		with patch("ai_saas.api.signup._create_documents", side_effect=frappe.ValidationError("boom")):
+		with patch("ai_saas.saas.accounts._create_documents", side_effect=frappe.ValidationError("boom")):
 			self.assertRaises(frappe.ValidationError, signup.create_account_from_desk, doc.name)
 		doc.reload()
 		self.assertEqual(doc.status, "Failed")
@@ -485,7 +485,7 @@ class TestSignup(FrappeTestCase):
 	@patch("ai_saas.saas.provisioning.provision_tenant")
 	def test_submit_without_provisioning_record_fails_loudly(self, provision):
 		token = self._walk_to_step3()
-		with patch("ai_saas.api.signup._alert_ops") as alert:
+		with patch("ai_saas.saas.accounts._alert_ops") as alert:
 			r = signup._submit(token)
 		self.assertEqual(r["state"], "failed")
 		alert.assert_called_once()

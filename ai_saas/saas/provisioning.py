@@ -9,6 +9,7 @@ import frappe
 from frappe.utils.password import get_decrypted_password
 
 from ai_saas.saas.alerts import notify_ops, ops_alert_recipients
+from ai_saas.saas.settings import get_settings
 
 _DEFAULT_BENCH_PATH = "/home/frappe/frappe-bench"
 _DEFAULT_BENCH_CMD = "/usr/local/bin/bench"
@@ -641,7 +642,6 @@ def scheduler_enabled_for_plan(plan_name) -> bool:
 	include background jobs. No plan, or a plan not listed, means no scheduler."""
 	if not plan_name:
 		return False
-	from ai_saas.saas.tenant_lifecycle import get_settings
 
 	return plan_name in get_settings().scheduler_plans
 
@@ -917,7 +917,7 @@ def _welcome_email_context(prov, reset_link: str) -> dict:
 def get_booking_url() -> str:
 	"""The Calendly link from MZ SaaS Settings (install seeds it); the shipped default
 	if someone blanks the setting — an email must never carry an empty link."""
-	from ai_saas.install import DEFAULT_BOOKING_URL
+	from ai_saas.saas.settings import DEFAULT_BOOKING_URL
 
 	return frappe.db.get_single_value("MZ SaaS Settings", "booking_url") or DEFAULT_BOOKING_URL
 
@@ -925,7 +925,7 @@ def get_booking_url() -> str:
 def _render_welcome_email(prov, reset_link: str) -> dict:
 	"""subject + message from the Email Template; raises if the template is missing
 	(install.ensure_email_templates creates it on install and migrate)."""
-	from ai_saas.install import WELCOME_EMAIL_TEMPLATE
+	from ai_saas.saas.settings import WELCOME_EMAIL_TEMPLATE
 
 	template = frappe.get_doc("Email Template", WELCOME_EMAIL_TEMPLATE)
 	return template.get_formatted_email(_welcome_email_context(prov, reset_link))

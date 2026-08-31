@@ -540,15 +540,22 @@ def inventory(attach: int = 1) -> dict:
 # ---------------------------------------------------------------- phase 2: acting
 
 def _contract_list(contracts) -> list[str]:
-	"""A comma list, a Python list, or "@file.csv" (column `contract`)."""
+	"""A comma list, a Python list, or a CSV path — "@file.csv" or plain "file.csv" —
+	with a `contract` column."""
 	if isinstance(contracts, (list, tuple)):
 		return [c.strip() for c in contracts if c and str(c).strip()]
 	contracts = str(contracts or "").strip()
-	if contracts.startswith("@"):
+	if contracts.startswith("@") or contracts.lower().endswith(".csv"):
 		import csv
 
-		with open(contracts[1:], newline="") as f:
-			return sorted({r["contract"].strip() for r in csv.DictReader(f) if (r.get("contract") or "").strip()})
+		path = contracts.lstrip("@")
+		if not os.path.isfile(path):
+			frappe.throw(f"Ficheiro não encontrado: {path}")
+		with open(path, newline="") as f:
+			rows = list(csv.DictReader(f))
+		if not rows or "contract" not in rows[0]:
+			frappe.throw(f"{path}: precisa de uma coluna chamada 'contract'.")
+		return sorted({r["contract"].strip() for r in rows if (r.get("contract") or "").strip()})
 	return [c.strip() for c in contracts.split(",") if c.strip()]
 
 
@@ -769,3 +776,58 @@ def create_account(customer_name, site, plan=None, start_date=None, email=None, 
 	          "subscription": frappe.db.get_value("Contract", contract.name, "mz_linked_subscription")}
 	print(result)
 	return result
+
+
+def archive_now(items, dry_run: int = 1, quiet: int = 0):
+	"""Wind-down: archive dormant legacy accounts today, in batches (Phase 3).
+
+	A thin sequencer over the engine's own verbs: suspend(notify=False) when the site
+	is still Active — only the gate archive() requires, never an email seconds before
+	the archive one — then archive(notify=not quiet): backup, verify, drop-site,
+	provisioning Archived + backup_path, Opportunity Closed/Lost with the campaign
+	clock stamped (G3 Dia 3/30 follow). `quiet=1` (mei): no emails at any step and the
+	clock is cleared, so no campaign can ever fire. Idempotent; ≤10 per run — each
+	item takes as long as its backups (ARCHIVE_TIMEOUT per bench call).
+	"""
+	from ai_saas.saas import crm
+	from ai_saas.saas.alerts import notify_ops
+	from ai_saas.saas.tenant_lifecycle import _attempt, account_phase, archive, suspend
+
+	dry_run, quiet = cint(dry_run), cint(quiet)
+	lines = []
+
+	def act(name):
+		phase = account_phase(name)
+		if phase == "":
+			lines.append(f"{name}: IGNORADO — sem registo de provisionamento (registar primeiro com activate/create_account).")
+			return
+		if phase not in ("Suspended", "Closed"):
+			suspend(name, reason="encerramento do funil antigo", cause="manual", notify=False)
+		archive(name, notify=not quiet)
+		if quiet:
+			opportunity = crm.find_opportunity(name) or frappe.db.get_value(
+				"Opportunity", {"party_name": frappe.db.get_value("Contract", name, "party_name"), "status": "Lost"},
+				"name", order_by="modified desc",
+			)
+			if opportunity:
+				frappe.db.set_value("Opportunity", opportunity, "mz_stage_since", None, update_modified=False)
+		lines.append(f"{name}: arquivado ({'silencioso' if quiet else 'com aviso + G3'})")
+
+	for name in _contract_list(items):
+		phase = account_phase(name) if frappe.db.exists("Contract", name) else None
+		if phase is None:
+			lines.append(f"{name}: IGNORADO — contrato não existe.")
+			continue
+		if phase == "Closed":
+			lines.append(f"{name}: já arquivado — nada a fazer.")
+			continue
+		if dry_run:
+			lines.append(f"{name}: [dry-run] fase {phase or '— (sem provisionamento: registar primeiro)'} → suspender{' silencioso' if quiet else ''} + arquivar")
+			continue
+		_attempt(lines, name, lambda name=name: act(name))
+
+	digest = "\n".join(lines) or "nada a fazer"
+	print(digest)
+	if not dry_run and lines:
+		notify_ops("Arquivo de contas do funil antigo", "<br>".join(frappe.utils.escape_html(x) for x in lines))
+	return lines

@@ -3,6 +3,8 @@ because the MozEconomia Cloud plans were absent — which made a fresh site sile
 "green" with zero tests run. ensure_test_plan() creates what is missing instead."""
 
 import frappe
+from frappe.tests.utils import FrappeTestCase
+from frappe.utils import add_days, nowdate
 
 TEST_PLAN = "Premium Mensal - MozEconomia Cloud"
 OTHER_PLAN = "Premium Anual - MozEconomia Cloud"
@@ -104,3 +106,83 @@ def purge_test_emails():
 	frappe.db.delete("Email Queue Recipient", {"parent": ("in", names)})
 	frappe.db.delete("Email Queue", {"name": ("in", names)})
 	frappe.db.commit()
+
+
+class FunnelTestCase(FrappeTestCase):
+	"""Shared scaffolding for the funnel suites (workstream B, 2026-08-31).
+
+	One test Customer per suite (set CUSTOMER, optionally CUSTOMER_EMAIL), a
+	`track()` registry, and a teardown that survives doc.submit()'s commits:
+	tracked documents are removed newest-first with their dependants (a Contract
+	takes its provisioning rows, linked Subscription and ToDos with it), then the
+	Customer, then one commit. Tests that submit documents MUST track them —
+	rollback cannot undo what submit committed.
+	"""
+
+	CUSTOMER = "_Test Funnel Customer"
+	CUSTOMER_EMAIL = None
+
+	def setUp(self):
+		ensure_test_plan()
+		make_test_customer(self.CUSTOMER)
+		if self.CUSTOMER_EMAIL:
+			frappe.db.set_value("Customer", self.CUSTOMER, "email_id", self.CUSTOMER_EMAIL)
+		self._tracked = []
+		frappe.db.commit()
+
+	def track(self, doctype, name):
+		self._tracked.append((doctype, name))
+		return name
+
+	def make_contract(self, submit=False, slug=None, **overrides):
+		"""A cloud Contract for the suite's Customer, provisioning patched, tracked."""
+		from unittest.mock import patch
+
+		fields = {
+			"doctype": "Contract", "party_type": "Customer", "party_name": self.CUSTOMER,
+			"start_date": add_days(nowdate(), 14), "contract_terms": "Termos de teste.",
+			"mz_subscription_plan": TEST_PLAN, "mz_tenant": slug or "funil-teste",
+		}
+		fields.update(overrides)
+		with patch("ai_saas.saas.provisioning.provision_tenant"):
+			doc = frappe.get_doc(fields).insert(ignore_permissions=True)
+			if submit:
+				doc.submit()
+		self.track("Contract", doc.name)
+		return doc
+
+	def make_prov(self, contract, status="Active", slug=None, **overrides):
+		row = {
+			"doctype": "MZ Tenant Provisioning", "contract": contract,
+			"tenant_slug": slug or frappe.db.get_value("Contract", contract, "mz_tenant") or "funil-teste",
+			"status": status,
+		}
+		row["site_name"] = overrides.pop("site_name", f"{row['tenant_slug']}.erp.mozeconomia.co.mz")
+		row.update(overrides)
+		doc = frappe.get_doc(row).insert(ignore_permissions=True)
+		self.track("MZ Tenant Provisioning", doc.name)
+		return doc
+
+	def _delete_contract(self, name):
+		if not frappe.db.exists("Contract", name):
+			return
+		for p in frappe.get_all("MZ Tenant Provisioning", {"contract": name}, pluck="name"):
+			frappe.delete_doc("MZ Tenant Provisioning", p, force=True, ignore_permissions=True)
+		sub = frappe.db.get_value("Contract", name, "mz_linked_subscription")
+		cleanup_contract(name)
+		if sub:
+			frappe.delete_doc("Subscription", sub, force=True, ignore_missing=True, ignore_permissions=True)
+
+	def tearDown(self):
+		for doctype, name in reversed(self._tracked):
+			if doctype == "Contract":
+				self._delete_contract(name)
+				continue
+			if doctype in ("Opportunity", "MZ Overdue Review"):
+				for t in frappe.get_all("ToDo", {"reference_type": doctype, "reference_name": name}, pluck="name"):
+					frappe.delete_doc("ToDo", t, force=True, ignore_permissions=True)
+			frappe.delete_doc(doctype, name, force=True, ignore_missing=True, ignore_permissions=True)
+		if frappe.db.exists("Customer", self.CUSTOMER):
+			frappe.db.set_value("Customer", self.CUSTOMER, {"customer_primary_contact": None, "email_id": None, "mobile_no": None})
+			frappe.delete_doc("Customer", self.CUSTOMER, force=True, ignore_permissions=True)
+		frappe.db.commit()

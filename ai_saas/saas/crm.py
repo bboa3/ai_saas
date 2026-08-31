@@ -6,7 +6,9 @@ here, and every campaign (the Notifications on Opportunity) reads `sales_stage` 
 import json
 
 import frappe
-from frappe.utils import now_datetime
+from frappe.utils import now_datetime, nowdate
+
+from ai_saas.saas.settings import get_settings
 
 # The one lifecycle, in order. A stage is reported by the event that causes it
 # (api/signup, contract_lifecycle, tenant_lifecycle, usage_signals) — never set by hand.
@@ -35,9 +37,11 @@ def find_opportunity(contract_name):
 	Converted counts as live: a signed account is still suspended, reactivated and
 	archived, and each of those reports here. Only Lost / Closed are past.
 
-	Three lookups, in order: an Opportunity whose party is the contract's Customer;
+	Two lookups, in order: an Opportunity whose party is the contract's Customer;
 	one whose party is the Lead the Customer was converted from (Customer.lead_name —
-	the shape A4 produces); one carrying the Customer's name as customer_name.
+	the shape A4 produces). Never by customer_name: a display name matches unrelated
+	Opportunities anywhere in the ERP, and archive() would mark a stranger's deal Lost.
+	The mirror resolver is find_contract().
 	"""
 	party_name = frappe.db.get_value("Contract", contract_name, "party_name")
 	if not party_name:
@@ -45,12 +49,9 @@ def find_opportunity(contract_name):
 	open_filter = {"status": ("not in", ["Lost", "Closed"])}
 
 	candidates = [{"party_name": party_name}]
-	customer = frappe.db.get_value("Customer", party_name, ["lead_name", "customer_name"], as_dict=True)
-	if customer:
-		if customer.lead_name:
-			candidates.append({"opportunity_from": "Lead", "party_name": customer.lead_name})
-		if customer.customer_name:
-			candidates.append({"customer_name": customer.customer_name})
+	lead = frappe.db.get_value("Customer", party_name, "lead_name")
+	if lead:
+		candidates.append({"opportunity_from": "Lead", "party_name": lead})
 
 	for filters in candidates:
 		name = frappe.db.get_value(
@@ -59,6 +60,39 @@ def find_opportunity(contract_name):
 		if name:
 			return name
 	return None
+
+
+def find_contract(opportunity) -> str | None:
+	"""The cloud Contract behind an Opportunity — the mirror of find_opportunity(),
+	derived on demand (never stored): via the Opportunity's MZ Signup when it has one
+	(exact, the self-service shape), else party → Customer (a Customer party directly,
+	a Lead party via Customer.lead_name) → that Customer's newest submitted Contract
+	with a tenant. None for a non-cloud Opportunity. Exposed to notification templates
+	as mz_find_contract — G2/G3 read the account only through this."""
+	doc = opportunity
+	if isinstance(opportunity, str):
+		doc = frappe.db.get_value(
+			"Opportunity", opportunity, ["opportunity_from", "party_name", "mz_signup"], as_dict=True
+		)
+	if not doc:
+		return None
+	if doc.get("mz_signup"):
+		contract = frappe.db.get_value("MZ Signup", doc.mz_signup, "contract")
+		if contract and frappe.db.exists("Contract", contract):
+			return contract
+	if doc.opportunity_from == "Customer":
+		customer = doc.party_name
+	elif doc.opportunity_from == "Lead":
+		customer = frappe.db.get_value("Customer", {"lead_name": doc.party_name}, "name")
+	else:
+		customer = None
+	if not customer:
+		return None
+	return frappe.db.get_value(
+		"Contract",
+		{"party_type": "Customer", "party_name": customer, "docstatus": 1, "mz_tenant": ("!=", "")},
+		"name", order_by="creation desc",
+	)
 
 
 def report(opportunity, stage, status=None):
@@ -118,7 +152,6 @@ def create_sales_todo(opportunity, description, marker):
 		except ValueError:
 			assignee = None
 	if not assignee:
-		from ai_saas.saas.tenant_lifecycle import get_settings
 
 		assignee = get_settings().default_sales_user
 	if not assignee:
@@ -171,3 +204,79 @@ def _email_assignee(assignee, opportunity, marker, description):
 		)
 	except Exception:
 		frappe.log_error(title=f"AI SaaS: signal email for {opportunity} not sent", message=frappe.get_traceback())
+
+
+def enter_crm(signup, stage=None):
+	"""Step 1 puts the person in the CRM: a Lead (one per email) and an Opportunity at
+	"Form Started" — the record the nurture reads and Sales sees. A second start for the
+	same address re-uses an Opportunity still at that stage (the resume link follows the
+	live signup through mz_signup, and the Dia 0 email goes again with the new link);
+	any other stage belongs to an earlier account, so a fresh Opportunity is opened.
+	`stage` overrides the entry stage for a signup that skipped step 1's entry (a
+	duplicate-of-account signup, or one started before the CRM entry existed): inserted
+	straight at Account Created, it never matches the nurture's "New" trigger."""
+	from ai_saas.saas.contract_lifecycle import _get_company
+
+	lead_name = frappe.db.get_value("Lead", {"email_id": signup.email}, "name")
+	if not lead_name:
+		lead = frappe.get_doc({
+			"doctype": "Lead", "first_name": signup.full_name, "email_id": signup.email,
+			"mobile_no": signup.phone, "phone": signup.phone, "status": "Lead",
+		})
+		lead.insert(ignore_permissions=True)
+		lead_name = lead.name
+
+	opportunity = frappe.db.get_value(
+		"Opportunity",
+		{"opportunity_from": "Lead", "party_name": lead_name, "status": "Open",
+		 "sales_stage": STAGE_FORM_STARTED},
+		"name", order_by="creation desc",
+	)
+	if not opportunity:
+		company = _get_company()
+		if not company:
+			frappe.throw("Sem empresa por omissão configurada (Global Defaults).")
+		opp = frappe.get_doc({
+			"doctype": "Opportunity", "opportunity_from": "Lead", "party_name": lead_name, "company": company,
+			"transaction_date": nowdate(), "sales_stage": stage or STAGE_FORM_STARTED,
+			"contact_email": signup.email, "contact_mobile": signup.phone,
+			"mz_signup": signup.name, "mz_stage_since": now_datetime(),
+		})
+		opp.insert(ignore_permissions=True)
+		opportunity = opp.name
+	else:
+		frappe.db.set_value("Opportunity", opportunity, {"mz_signup": signup.name, "contact_mobile": signup.phone})
+		touch(opportunity)
+		if stage is None:
+			# Only a step-1 restart resends the welcome (the older resume link is dead).
+			# Reached with a stage — a desk sale or a duplicate-account submit whose email
+			# once started a web signup — the account is being created right now: no
+			# "finish your registration" mail.
+			_resend_day_zero(opportunity)
+	signup.db_set({"lead": lead_name, "opportunity": opportunity}, update_modified=False)
+
+def sync_crm(signup):
+	"""What the form has learnt so far, onto the Lead; the Opportunity's clock restarts."""
+	if not signup.opportunity:
+		return
+	frappe.db.set_value("Lead", signup.lead, {
+		"first_name": signup.full_name, "company_name": signup.company_name or None,
+		"mz_segment": signup.industry or None, "city": signup.city or None,
+		"mobile_no": signup.phone or None, "phone": signup.phone or None,
+	})
+	frappe.db.set_value("Opportunity", signup.opportunity, {
+		"contact_email": signup.email, "contact_mobile": signup.phone or None,
+		"customer_name": signup.company_name or None,
+	})
+	touch(signup.opportunity)
+
+def _resend_day_zero(opportunity):
+	"""A restart supersedes the older signup, so its resume link is dead: send the
+	"New"-event nurture again, now carrying the live one. Best effort."""
+	name = "AI SaaS - Lead Nurture - Dia 0"
+	if not frappe.db.get_value("Notification", name, "enabled"):
+		return
+	try:
+		frappe.get_doc("Notification", name).send(frappe.get_doc("Opportunity", opportunity))
+	except Exception:
+		frappe.log_error(title="AI SaaS: Dia 0 resend failed", message=frappe.get_traceback())

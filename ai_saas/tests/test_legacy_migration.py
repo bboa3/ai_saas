@@ -244,3 +244,62 @@ class TestLegacyMigration(FrappeTestCase):
 		self.assertIn(self.contract.name, [r.name for r in live_trials()])
 		frappe.db.set_value("Contract", self.contract.name, "mz_direct", 1, update_modified=False)
 		self.assertNotIn(self.contract.name, [r.name for r in live_trials()])
+
+	def _armed_trial(self):
+		self._submit_contract(signed=False)
+		frappe.get_doc({
+			"doctype": "MZ Tenant Provisioning", "contract": self.contract.name,
+			"tenant_slug": "inventario-teste", "site_name": SITE, "status": "Active",
+		}).insert(ignore_permissions=True)
+		opp = frappe.get_doc({
+			"doctype": "Opportunity", "opportunity_from": "Customer", "party_name": self.customer,
+			"company": frappe.db.get_single_value("Global Defaults", "default_company"),
+			"sales_stage": "Cloud - Account Created", "contact_email": EMAIL,
+		}).insert(ignore_permissions=True)
+		frappe.db.commit()
+		return opp.name
+
+	def _archive_patches(self):
+		import os as _os
+
+		return (
+			patch("ai_saas.saas.tenant_lifecycle.run_cmd"),
+			patch("ai_saas.saas.tenant_lifecycle._run"),
+			patch("ai_saas.saas.tenant_lifecycle._has_recent_backup", return_value=True),
+			patch("ai_saas.saas.tenant_lifecycle.os.path.isdir", return_value=True),
+			patch("ai_saas.saas.tenant_lifecycle.get_db_root_password", return_value="x"),
+		)
+
+	def test_archive_now_one_email_then_the_campaign(self):
+		from frappe.utils import strip_html
+
+		opp = self._armed_trial()
+		queued = frappe.db.count("Email Queue")
+		dry = lm.archive_now(self.contract.name, dry_run=1)
+		self.assertIn("[dry-run]", dry[0])
+		p1, p2, p3, p4, p5 = self._archive_patches()
+		with p1, p2, p3, p4, p5:
+			out = lm.archive_now(self.contract.name, dry_run=0)
+		self.assertIn("arquivado", out[0])
+		# suspend was silent; archive sent exactly one "Conta Arquivada"
+		self.assertEqual(frappe.db.count("Email Queue"), queued + 1)
+		stage = frappe.db.get_value("Opportunity", opp, ["sales_stage", "status", "mz_stage_since"], as_dict=True)
+		self.assertEqual((stage.sales_stage, stage.status), ("Cloud - Closed", "Lost"))
+		self.assertTrue(stage.mz_stage_since)  # the G3 clock is running
+		again = lm.archive_now(self.contract.name, dry_run=0)
+		self.assertIn("já arquivado", again[0])
+
+	def test_archive_now_quiet_sends_nothing_ever(self):
+		opp = self._armed_trial()
+		queued = frappe.db.count("Email Queue")
+		p1, p2, p3, p4, p5 = self._archive_patches()
+		with p1, p2, p3, p4, p5:
+			lm.archive_now(self.contract.name, dry_run=0, quiet=1)
+		self.assertEqual(frappe.db.count("Email Queue"), queued)
+		stage = frappe.db.get_value("Opportunity", opp, ["sales_stage", "status", "mz_stage_since"], as_dict=True)
+		self.assertEqual((stage.sales_stage, stage.status, stage.mz_stage_since), ("Cloud - Closed", "Lost", None))
+
+	def test_archive_now_refuses_the_unregistered(self):
+		self._submit_contract(signed=False)  # no provisioning row
+		out = lm.archive_now(self.contract.name, dry_run=0)
+		self.assertIn("IGNORADO", out[0])

@@ -8,6 +8,8 @@ Never raises: a lifecycle act that succeeded must not be undone by a mail proble
 import frappe
 from frappe.utils import fmt_money, formatdate
 
+from ai_saas.saas.settings import get_settings
+
 TEMPLATES = {
 	"suspended": "MozEconomia Cloud - Conta Suspensa",
 	"archived": "MozEconomia Cloud - Conta Arquivada",
@@ -48,7 +50,6 @@ def send_lifecycle_email(kind: str, contract_name: str, **extra) -> bool:
 def build_context(contract_name: str, **extra) -> dict:
 	from ai_saas.saas.activation import get_activation_url, get_reactivation_url
 	from ai_saas.saas.provisioning import get_booking_url
-	from ai_saas.saas.tenant_lifecycle import get_settings
 	from ai_saas.utils.jinja import mz_first_name, mz_greeting, mz_signature
 
 	contract = frappe.db.get_value(

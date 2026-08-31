@@ -27,7 +27,7 @@ class TestSchedulerPolicy(FrappeTestCase):
 		# The scheduler is on for the plans listed in MZ SaaS Settings.scheduler_plans.
 		real = tenant_lifecycle.get_settings()
 		real.scheduler_plans = [TEST_PLAN]
-		self._settings = patch("ai_saas.saas.tenant_lifecycle.get_settings", return_value=real)
+		self._settings = patch("ai_saas.saas.provisioning.get_settings", return_value=real)
 		self._settings.start()
 		with patch("ai_saas.saas.provisioning.provision_tenant"):
 			self.contract = frappe.get_doc({

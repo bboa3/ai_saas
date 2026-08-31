@@ -9,45 +9,21 @@ from frappe.utils import add_days, nowdate
 
 from ai_saas.install import WELCOME_EMAIL_TEMPLATE
 from ai_saas.saas import provisioning
+from ai_saas.tests.helpers import FunnelTestCase
 
 TEST_CUSTOMER = "_Test Cliente AI SaaS M"
 TEST_PLAN = "Premium Mensal - MozEconomia Cloud"
 TEST_SLUG = "c2-teste"
 
 
-class TestMessaging(FrappeTestCase):
-	def setUp(self):
-		from ai_saas.tests.helpers import ensure_test_plan
-		ensure_test_plan()
-		if not frappe.db.exists("Customer", TEST_CUSTOMER):
-			frappe.get_doc({
-				"doctype": "Customer", "customer_name": TEST_CUSTOMER, "customer_type": "Company",
-				"customer_group": frappe.db.get_value("Customer Group", {"is_group": 0}, "name"),
-				"territory": frappe.db.get_value("Territory", {"is_group": 0}, "name"),
-			}).insert(ignore_permissions=True)
-		# The Contract's contact fields are fetched from the Customer — the email lives there.
-		frappe.db.set_value("Customer", TEST_CUSTOMER, "email_id", "m@example.com")
-		with patch("ai_saas.saas.provisioning.provision_tenant"):
-			self.contract = frappe.get_doc({
-				"doctype": "Contract", "party_type": "Customer", "party_name": TEST_CUSTOMER,
-				"start_date": add_days(nowdate(), 14), "contract_terms": "Termos M.",
-				"mz_subscription_plan": TEST_PLAN, "mz_tenant": TEST_SLUG,
-			}).insert(ignore_permissions=True)
-			self.contract.submit()
-		self.prov = frappe.get_doc({
-			"doctype": "MZ Tenant Provisioning", "contract": self.contract.name, "tenant_slug": TEST_SLUG,
-			"site_name": f"{TEST_SLUG}.erp.mozeconomia.co.mz", "customer_name": TEST_CUSTOMER,
-			"contact_email": "m@example.com", "status": "Active",
-		}).insert(ignore_permissions=True)
-		frappe.db.commit()
+class TestMessaging(FunnelTestCase):
+	CUSTOMER = TEST_CUSTOMER
+	CUSTOMER_EMAIL = "m@example.com"  # the Contract's contact fields fetch from the Customer
 
-	def tearDown(self):
-		frappe.delete_doc("MZ Tenant Provisioning", self.prov.name, force=True, ignore_missing=True, ignore_permissions=True)
-		doc = frappe.get_doc("Contract", self.contract.name)
-		if doc.docstatus == 1:
-			doc.cancel()
-		frappe.delete_doc("Contract", doc.name, force=True, ignore_permissions=True)
-		frappe.delete_doc("Customer", TEST_CUSTOMER, force=True, ignore_missing=True, ignore_permissions=True)
+	def setUp(self):
+		super().setUp()
+		self.contract = self.make_contract(submit=True, slug=TEST_SLUG, contract_terms="Termos M.")
+		self.prov = self.make_prov(self.contract.name, customer_name=TEST_CUSTOMER, contact_email="m@example.com")
 		frappe.db.commit()
 
 	# ---- C2 ---------------------------------------------------------------------
@@ -315,6 +291,40 @@ class TestMessaging(FrappeTestCase):
 
 
 
+	def test_g3_reaches_an_account_with_no_signup(self):
+		"""The resolver is the only account lookup: a legacy/create_account Opportunity
+		(no MZ Signup anywhere) passes the condition and renders with the /reactivar link."""
+		from ai_saas.saas import crm
+
+		frappe.db.set_value("MZ Tenant Provisioning", self.prov.name, "backup_path", "/tmp/x")
+		opp = frappe.get_doc({
+			"doctype": "Opportunity", "opportunity_from": "Customer", "party_name": TEST_CUSTOMER,
+			"company": frappe.db.get_single_value("Global Defaults", "default_company"),
+			"sales_stage": "Cloud - Closed", "contact_email": "m@example.com",
+		}).insert(ignore_permissions=True)
+		self.track("Opportunity", opp.name)
+		self.assertEqual(crm.find_contract(opp.name), self.contract.name)
+		record = frappe.get_doc("Notification", "AI SaaS - Conta Encerrada - Dia 3")
+		self.assertTrue(frappe.safe_eval(record.condition, None, {"doc": opp}))
+		html = frappe.render_template(record.message, {"doc": opp, "alert": None, "comments": None})
+		self.assertIn("/reactivar", html)
+		self.assertNotIn("{{", html)
+
+	def test_an_empty_rendering_never_sends(self):
+		"""The override makes a false body-gate mean no email at all — here: a trial
+		countdown for a site that is no longer Active."""
+		frappe.db.set_value("MZ Tenant Provisioning", self.prov.name, "status", "Suspended")
+		queued = frappe.db.count("Email Queue")
+		record = frappe.get_doc("Notification", "AI SaaS - Trial - Hoje")
+		self.assertIsInstance(record, __import__("ai_saas.overrides.notification", fromlist=["SilentWhenEmptyNotification"]).SilentWhenEmptyNotification)
+		record.send(frappe.get_doc("Contract", self.contract.name))
+		self.assertEqual(frappe.db.count("Email Queue"), queued)
+		# and the same notification DOES send while the site is Active
+		frappe.db.set_value("MZ Tenant Provisioning", self.prov.name, "status", "Active")
+		record.send(frappe.get_doc("Contract", self.contract.name))
+		self.assertEqual(frappe.db.count("Email Queue"), queued + 1)
+
+
 class TestCommunicationLanguage(FrappeTestCase):
 	"""One voice (docs/communication-copy-review.md): time-of-day greeting to a person,
 	account-manager signature, Mozambican spelling, one inbox for relationship emails."""
@@ -364,6 +374,15 @@ class TestCommunicationLanguage(FrappeTestCase):
 
 	def test_every_message_renders_with_greeting(self):
 		from frappe.email.doctype.notification.notification import get_context
+		# The trial-countdown bodies gate on the site being Active (workstream B):
+		# give the fake contract a provisioning row so the gate opens for the render.
+		prov = frappe.get_doc({
+			"doctype": "MZ Tenant Provisioning", "contract": "CON-X", "tenant_slug": "x",
+			"site_name": "x.erp.mozeconomia.co.mz", "status": "Active",
+		})
+		prov.flags.ignore_links = True
+		prov.insert(ignore_permissions=True)
+		self.addCleanup(lambda: frappe.delete_doc("MZ Tenant Provisioning", prov.name, force=True, ignore_permissions=True))
 		docs = {
 			"Contract": frappe._dict({"doctype": "Contract", "name": "CON-X", "party_name": "Empresa X", "mz_contact_name": "Ana Sitoe",
 			                          "mz_account_manager": None, "mz_tenant_url": "x.erp.mozeconomia.co.mz", "start_date": nowdate(),

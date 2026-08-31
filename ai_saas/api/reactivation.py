@@ -13,7 +13,8 @@ from frappe.utils import now_datetime
 from ai_saas.api.signup import _limit
 from ai_saas.saas.activation import is_valid_token
 from ai_saas.saas.alerts import notify_ops
-from ai_saas.saas.tenant_lifecycle import account_phase, get_settings
+from ai_saas.saas.settings import get_settings
+from ai_saas.saas.tenant_lifecycle import account_phase
 
 MAX_MESSAGE = 1000
 

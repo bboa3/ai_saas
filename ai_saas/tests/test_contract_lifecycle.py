@@ -11,8 +11,9 @@ frappe.db.rollback() is not enough.
 from unittest.mock import patch
 
 import frappe
-from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, nowdate
+
+from ai_saas.tests.helpers import FunnelTestCase
 
 TEST_CUSTOMER = "_Test Cliente AI SaaS B1"
 TEST_PLAN = "Premium Mensal - MozEconomia Cloud"
@@ -20,39 +21,8 @@ OTHER_PLAN = "Premium Anual - MozEconomia Cloud"
 TEST_SLUG = "b1-teste"
 
 
-class TestContractLifecycle(FrappeTestCase):
-	def setUp(self):
-		from ai_saas.tests.helpers import ensure_test_plan
-		ensure_test_plan()
-		if not frappe.db.exists("Customer", TEST_CUSTOMER):
-			frappe.get_doc({
-				"doctype": "Customer",
-				"customer_name": TEST_CUSTOMER,
-				"customer_type": "Company",
-				"customer_group": frappe.db.get_value("Customer Group", {"is_group": 0}, "name"),
-				"territory": frappe.db.get_value("Territory", {"is_group": 0}, "name"),
-			}).insert(ignore_permissions=True)
-		self._contracts = []
-		self._contacts = []
-		self._subs = []
-		frappe.db.commit()
-
-	def tearDown(self):
-		for name in self._contracts:
-			if frappe.db.exists("Contract", name):
-				frappe.db.set_value("Contract", name, "mz_linked_subscription", None, update_modified=False)
-				doc = frappe.get_doc("Contract", name)
-				if doc.docstatus == 1:
-					doc.cancel()
-				frappe.delete_doc("Contract", doc.name, force=True, ignore_permissions=True)
-		for name in self._subs:
-			frappe.delete_doc("Subscription", name, force=True, ignore_missing=True, ignore_permissions=True)
-		for name in self._contacts:
-			frappe.delete_doc("Contact", name, force=True, ignore_missing=True, ignore_permissions=True)
-		if frappe.db.exists("Customer", TEST_CUSTOMER):
-			frappe.db.set_value("Customer", TEST_CUSTOMER, {"customer_primary_contact": None, "email_id": None})
-			frappe.delete_doc("Customer", TEST_CUSTOMER, force=True, ignore_permissions=True)
-		frappe.db.commit()
+class TestContractLifecycle(FunnelTestCase):
+	CUSTOMER = TEST_CUSTOMER
 
 	def _make_contract(self, is_signed=0, tenant=TEST_SLUG, plan=TEST_PLAN):
 		doc = frappe.get_doc({
@@ -66,7 +36,7 @@ class TestContractLifecycle(FrappeTestCase):
 			"mz_tenant": tenant,
 		})
 		doc.insert(ignore_permissions=True)
-		self._contracts.append(doc.name)
+		self.track("Contract", doc.name)
 		return doc
 
 	# ---- B1: the trigger split -------------------------------------------------
@@ -164,7 +134,7 @@ class TestContractLifecycle(FrappeTestCase):
 			"start_date": add_days(nowdate(), 30), "generate_invoice_at": "Beginning of the current subscription period",
 			"plans": [{"plan": TEST_PLAN, "qty": 1}],
 		}).insert(ignore_permissions=True)
-		self._subs.append(sub.name)
+		self.track("Subscription", sub.name)
 		frappe.db.set_value("Contract", doc.name, "mz_linked_subscription", sub.name)
 
 		doc.reload()
@@ -205,7 +175,7 @@ class TestContractLifecycle(FrappeTestCase):
 			"links": [{"link_doctype": "Customer", "link_name": TEST_CUSTOMER}],
 		})
 		contact.insert(ignore_permissions=True)
-		self._contacts.append(contact.name)
+		self.track("Contact", contact.name)
 
 		_ensure_customer_primary_contact(frappe._dict(party_name=TEST_CUSTOMER))
 
@@ -224,7 +194,7 @@ class TestContractLifecycle(FrappeTestCase):
 			"links": [{"link_doctype": "Customer", "link_name": TEST_CUSTOMER}],
 		})
 		other.insert(ignore_permissions=True)
-		self._contacts.append(other.name)
+		self.track("Contact", other.name)
 		_ensure_customer_primary_contact(frappe._dict(party_name=TEST_CUSTOMER))
 		self.assertEqual(
 			frappe.db.get_value("Customer", TEST_CUSTOMER, "customer_primary_contact"),

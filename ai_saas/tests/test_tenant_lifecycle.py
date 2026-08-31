@@ -11,33 +11,18 @@ Known bench pattern: doc.submit() commits, so tearDown cleans up explicitly.
 from unittest.mock import patch
 
 import frappe
-from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, nowdate
 
 from ai_saas.saas import crm, tenant_lifecycle
+from ai_saas.tests.helpers import FunnelTestCase
 
 TEST_CUSTOMER = "_Test Cliente AI SaaS F"
 TEST_PLAN = "Premium Mensal - MozEconomia Cloud"
 TEST_SLUG = "f2-teste"
 
 
-class TestTenantLifecycle(FrappeTestCase):
-	def setUp(self):
-		from ai_saas.tests.helpers import ensure_test_plan
-		ensure_test_plan()
-		if not frappe.db.exists("Customer", TEST_CUSTOMER):
-			frappe.get_doc({
-				"doctype": "Customer",
-				"customer_name": TEST_CUSTOMER,
-				"customer_type": "Company",
-				"customer_group": frappe.db.get_value("Customer Group", {"is_group": 0}, "name"),
-				"territory": frappe.db.get_value("Territory", {"is_group": 0}, "name"),
-			}).insert(ignore_permissions=True)
-		self._contracts = []
-		self._provs = []
-		self._reviews = []
-		self._opps = []
-		frappe.db.commit()
+class TestTenantLifecycle(FunnelTestCase):
+	CUSTOMER = TEST_CUSTOMER
 
 	def _make_opportunity(self, contract_name):
 		"""The Opportunity behind a contract, the way crm.find_opportunity resolves it."""
@@ -46,30 +31,11 @@ class TestTenantLifecycle(FrappeTestCase):
 			"company": frappe.db.get_single_value("Global Defaults", "default_company"),
 			"sales_stage": "Cloud - Account Created", "contact_email": "cliente@example.com",
 		}).insert(ignore_permissions=True)
-		self._opps.append(opp.name)
+		self.track("Opportunity", opp.name)
 		return opp.name
 
 	def _stage(self, opp):
 		return frappe.db.get_value("Opportunity", opp, ["sales_stage", "status"], as_dict=True)
-
-	def tearDown(self):
-		for name in self._reviews:
-			for t in frappe.get_all("ToDo", {"reference_type": "MZ Overdue Review", "reference_name": name}, pluck="name"):
-				frappe.delete_doc("ToDo", t, force=True, ignore_permissions=True)
-			frappe.delete_doc("MZ Overdue Review", name, force=True, ignore_missing=True, ignore_permissions=True)
-		for name in self._opps:
-			frappe.delete_doc("Opportunity", name, force=True, ignore_missing=True, ignore_permissions=True)
-		for name in self._provs:
-			frappe.delete_doc("MZ Tenant Provisioning", name, force=True, ignore_missing=True, ignore_permissions=True)
-		for name in self._contracts:
-			if frappe.db.exists("Contract", name):
-				doc = frappe.get_doc("Contract", name)
-				if doc.docstatus == 1:
-					doc.cancel()
-				frappe.delete_doc("Contract", doc.name, force=True, ignore_permissions=True)
-		if frappe.db.exists("Customer", TEST_CUSTOMER):
-			frappe.delete_doc("Customer", TEST_CUSTOMER, force=True, ignore_permissions=True)
-		frappe.db.commit()
 
 	def _make_trial(self, start_date, slug=TEST_SLUG):
 		"""Submitted unsigned cloud contract (provisioning patched) + its prov record."""
@@ -84,7 +50,7 @@ class TestTenantLifecycle(FrappeTestCase):
 				"mz_tenant": slug,
 			})
 			doc.insert(ignore_permissions=True)
-			self._contracts.append(doc.name)
+			self.track("Contract", doc.name)
 			doc.submit()
 
 		prov = frappe.get_doc({
@@ -95,7 +61,7 @@ class TestTenantLifecycle(FrappeTestCase):
 			"status": "Active",
 		})
 		prov.insert(ignore_permissions=True)
-		self._provs.append(prov.name)
+		self.track("MZ Tenant Provisioning", prov.name)
 		frappe.db.commit()
 		return doc, prov
 
@@ -141,7 +107,7 @@ class TestTenantLifecycle(FrappeTestCase):
 				"mz_subscription_plan": TEST_PLAN,
 			})
 			plain.insert(ignore_permissions=True)
-			self._contracts.append(plain.name)
+			self.track("Contract", plain.name)
 			plain.submit()
 
 		real = tenant_lifecycle.get_settings()
@@ -229,6 +195,48 @@ class TestTenantLifecycle(FrappeTestCase):
 		tenant_lifecycle.reactivate(doc.name, force=True)
 		self.assertEqual(self._stage(opp).sales_stage, "Cloud - Activated")
 
+	def test_find_opportunity_never_matches_by_display_name(self):
+		"""A display name matches unrelated deals anywhere in the ERP — archive() would
+		mark a stranger's Opportunity Lost. Only party links count (workstream B)."""
+		doc, _prov = self._make_trial(start_date=add_days(nowdate(), 7))
+		stranger = frappe.get_doc({
+			"doctype": "Opportunity", "opportunity_from": "Lead",
+			"party_name": frappe.get_doc({"doctype": "Lead", "first_name": "Outro", "email_id": "outro@example.com"}).insert(ignore_permissions=True).name,
+			"company": frappe.db.get_single_value("Global Defaults", "default_company"),
+			"customer_name": TEST_CUSTOMER,
+		}).insert(ignore_permissions=True)
+		self.track("Opportunity", stranger.name)
+		self.track("Lead", stranger.party_name)
+		self.assertIsNone(crm.find_opportunity(doc.name))
+		mine = self._make_opportunity(doc.name)
+		self.assertEqual(crm.find_opportunity(doc.name), mine)
+
+	def test_find_contract_mirrors_every_account_shape(self):
+		doc, _prov = self._make_trial(start_date=add_days(nowdate(), 7))
+		# Customer-party Opportunity (create_account / legacy shape)
+		opp = self._make_opportunity(doc.name)
+		self.assertEqual(crm.find_contract(opp), doc.name)
+		# Lead-party Opportunity (self-service shape, resolved via Customer.lead_name)
+		lead = frappe.get_doc({"doctype": "Lead", "first_name": "T", "email_id": "fc-lead@example.com"}).insert(ignore_permissions=True)
+		self.track("Lead", lead.name)
+		frappe.db.set_value("Customer", TEST_CUSTOMER, "lead_name", lead.name)
+		via_lead = frappe.get_doc({
+			"doctype": "Opportunity", "opportunity_from": "Lead", "party_name": lead.name,
+			"company": frappe.db.get_single_value("Global Defaults", "default_company"),
+		}).insert(ignore_permissions=True)
+		self.track("Opportunity", via_lead.name)
+		self.assertEqual(crm.find_contract(via_lead.name), doc.name)
+		# non-cloud Opportunity resolves to nothing
+		self.assertIsNone(crm.find_contract(frappe._dict(opportunity_from="Lead", party_name="no-such-lead", mz_signup=None)))
+
+	@patch("ai_saas.saas.tenant_lifecycle.run_cmd")
+	def test_quiet_suspend_sends_nothing(self, run_cmd):
+		doc, _prov = self._make_trial(start_date=add_days(nowdate(), -1))
+		queued = frappe.db.count("Email Queue")
+		tenant_lifecycle.suspend(doc.name, cause="manual", notify=False)
+		self.assertEqual(frappe.db.count("Email Queue"), queued)
+		self.assertEqual(tenant_lifecycle.account_phase(doc.name), "Suspended")
+
 	@patch("ai_saas.saas.tenant_lifecycle.run_cmd")
 	def test_customer_request_lands_as_a_review(self, run_cmd):
 		from ai_saas.api import reactivation
@@ -246,7 +254,7 @@ class TestTenantLifecycle(FrappeTestCase):
 
 		with patch("ai_saas.api.reactivation.notify_ops") as ops:
 			r = reactivation._request(doc.name, token, "já pagámos")
-		self._reviews.append(r["review"])
+		self.track("MZ Overdue Review", r["review"])
 		self.assertEqual(r["state"], "requested")
 		review = frappe.get_doc("MZ Overdue Review", r["review"])
 		self.assertEqual((review.contract, review.customer, review.origin, review.review_status),
@@ -276,7 +284,7 @@ class TestTenantLifecycle(FrappeTestCase):
 		good, _ = self._make_trial(start_date=add_days(nowdate(), -3), slug="f3-good")
 		unprovisioned, prov_u = self._make_trial(start_date=add_days(nowdate(), -3), slug="f3-nosite")
 		frappe.delete_doc("MZ Tenant Provisioning", prov_u.name, force=True, ignore_permissions=True)
-		self._provs.remove(prov_u.name)
+		self._tracked.remove(("MZ Tenant Provisioning", prov_u.name))
 		frappe.db.commit()  # the failing site's rollback below must not resurrect this row
 
 		def _boom(cmd, step, prov, timeout):
@@ -348,7 +356,7 @@ class TestTenantLifecycle(FrappeTestCase):
 			"review_status": "Pending Review",
 		})
 		review.insert(ignore_permissions=True)
-		self._reviews.append(review.name)
+		self.track("MZ Overdue Review", review.name)
 
 		with patch("ai_saas.saas.tenant_lifecycle.suspend") as mock_suspend:
 			review.review_status = "Suspend"

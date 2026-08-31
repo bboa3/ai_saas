@@ -84,10 +84,10 @@ class TestProvisioningRetry(FrappeTestCase):
 	# ---- C3 ---------------------------------------------------------------------
 
 	def test_alert_recipients_prefer_settings(self):
-		with patch("ai_saas.saas.tenant_lifecycle.get_settings") as gs:
+		with patch("ai_saas.saas.alerts.get_settings") as gs:
 			gs.return_value = frappe._dict(ops_alert_recipients=["ops@example.com", "sales@example.com"])
 			self.assertEqual(provisioning._ops_alert_recipients(), ["ops@example.com", "sales@example.com"])
-		with patch("ai_saas.saas.tenant_lifecycle.get_settings") as gs:
+		with patch("ai_saas.saas.alerts.get_settings") as gs:
 			gs.return_value = frappe._dict(ops_alert_recipients=[])
 			fallback = provisioning._ops_alert_recipients()
 			self.assertEqual(len(fallback), 1)

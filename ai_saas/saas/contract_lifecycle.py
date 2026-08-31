@@ -2,6 +2,7 @@ import frappe
 from frappe.utils import getdate, nowdate
 
 from ai_saas.saas import crm
+from ai_saas.saas.settings import get_settings
 
 # The two triggers of the funnel, split along the signature (docs/sales-funnel-implementation.md, B1):
 #   contract submitted -> the site is created and the trial begins, signed or not;
@@ -27,9 +28,10 @@ def on_contract_submitted(doc, method=None):
 	if doc.is_signed:
 		_move_customer_to_commercial_group(doc)
 		crm.report_for_contract(doc.name, crm.STAGE_ACTIVATED, status="Converted")
-	else:
-		# Desk-created accounts enter the ledger here; the signup path reports the same
-		# stage a moment later, which report() treats as a no-op.
+	elif not frappe.db.exists("MZ Signup", {"contract": doc.name}):
+		# Desk/manual contracts enter the ledger here. A signup-created contract is
+		# reported by the signup path itself, on the Opportunity it owns — reporting
+		# here too could touch a different Opportunity of a reused house Customer.
 		crm.report_for_contract(doc.name, crm.STAGE_ACCOUNT_CREATED)
 	_maybe_provision_tenant(doc)
 
@@ -101,8 +103,7 @@ def _move_customer_to_commercial_group(doc):
 	"""A4/E1: a signed customer leaves the trial group so sales reporting stops
 	counting it as a trial. Target: MZ SaaS Settings.commercial_customer_group,
 	else Selling Settings' default group; if neither is set, leave it alone."""
-	from ai_saas.install import TRIAL_CUSTOMER_GROUP
-	from ai_saas.saas.tenant_lifecycle import get_settings
+	from ai_saas.saas.settings import TRIAL_CUSTOMER_GROUP
 
 	if frappe.db.get_value("Customer", doc.party_name, "customer_group") != TRIAL_CUSTOMER_GROUP:
 		return

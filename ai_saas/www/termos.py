@@ -8,7 +8,7 @@ no_breadcrumbs = 1
 
 
 def get_context(context):
-	from ai_saas.install import _CONTRACT_TEMPLATE_TITLE
+	from ai_saas.saas.settings import CONTRACT_TEMPLATE_TITLE as _CONTRACT_TEMPLATE_TITLE
 
 	context.title = "Termos de Serviço — MozEconomia Cloud"
 	terms = frappe.db.get_value("Contract Template", _CONTRACT_TEMPLATE_TITLE, "contract_terms") or ""

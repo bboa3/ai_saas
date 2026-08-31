@@ -34,6 +34,9 @@ def get_payment_page_data(invoice_name: str, token: str) -> dict:
 
 	Token is validated before any DB access.
 	"""
+	from ai_saas.api.signup import _limit
+
+	_limit(limit=60, seconds=60)
 	if not _validate_invoice_token(invoice_name, token):
 		frappe.throw(_("Link de pagamento inválido ou expirado."), frappe.PermissionError)
 
@@ -66,6 +69,10 @@ def initiate_payment(invoice_name: str, token: str, method: str, phone_number: s
 	Idempotent: if a Pending request already exists for this invoice + method,
 	return it instead of creating a new one (even if SISLOG hasn't responded yet).
 	"""
+	from ai_saas.api.signup import _limit
+
+	_limit(limit=10, seconds=60)
+	_limit(identity=f"invoice:{invoice_name}", limit=10, seconds=60)
 	from ai_saas.multipay.client import request_reference
 	if not _validate_invoice_token(invoice_name, token):
 		frappe.throw(_("Link de pagamento inválido ou expirado."), frappe.PermissionError)
@@ -170,6 +177,9 @@ def get_payment_status(payment_request: str, token: str) -> dict:
 
 	Requires the invoice token to prevent unauthenticated enumeration of PR data.
 	"""
+	from ai_saas.api.signup import _limit
+
+	_limit(limit=120, seconds=60)
 	pr = frappe.db.get_value(
 		"Payment Request",
 		payment_request,

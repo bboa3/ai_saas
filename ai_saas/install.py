@@ -256,7 +256,7 @@ def backfill_customer_primaries():
 			frappe.log_error(title=f"AI SaaS: primaries not set for {name}", message=frappe.get_traceback())
 
 
-WELCOME_EMAIL_TEMPLATE = "MozEconomia Cloud - Entrega da Conta"
+from ai_saas.saas.settings import WELCOME_EMAIL_TEMPLATE
 
 # C2: the delivery email. Rendered by provisioning._send_welcome_email with the
 # context documented there. Create-if-missing — the copy belongs to the business.
@@ -408,7 +408,7 @@ def push_email_templates():
 	frappe.db.commit()
 
 
-DEFAULT_BOOKING_URL = "https://calendly.com/arlindoboa/chamada-de-ativacao-mozeconomia"
+from ai_saas.saas.settings import DEFAULT_BOOKING_URL
 
 
 def ensure_booking_url():
@@ -418,7 +418,7 @@ def ensure_booking_url():
 		frappe.db.set_single_value("MZ SaaS Settings", "booking_url", DEFAULT_BOOKING_URL)
 
 
-TRIAL_CUSTOMER_GROUP = "Cloud - Trial"
+from ai_saas.saas.settings import TRIAL_CUSTOMER_GROUP
 
 
 def ensure_trial_customer_group():
@@ -480,7 +480,7 @@ def _sync_property_setters():
 	return
 
 
-_CONTRACT_TEMPLATE_TITLE = "MozEconomia Cloud"
+from ai_saas.saas.settings import CONTRACT_TEMPLATE_TITLE as _CONTRACT_TEMPLATE_TITLE
 
 # Rendered by erpnext.crm.doctype.contract_template.contract_template.get_contract_template
 # against the contract document, so {{ ... }} placeholders are contract fields. This text is

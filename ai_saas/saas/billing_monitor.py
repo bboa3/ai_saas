@@ -1,6 +1,8 @@
 import frappe
 from frappe.utils import add_days, getdate, nowdate
 
+from ai_saas.saas.settings import get_settings
+
 
 def flag_overdue_customers():
 	"""Daily: pre-billing reminders, the D+1 review row, and the commercial follow-up.
@@ -27,7 +29,6 @@ def _send_prebilling_reminders():
 	today — i.e. the invoice has not been created yet.  For each, resolves
 	the linked Contract and sends a templated email to contact_email.
 	"""
-	from ai_saas.saas.tenant_lifecycle import get_settings
 
 	lead_days = get_settings().prebilling_reminder_days
 	target_date = getdate(add_days(nowdate(), lead_days))
@@ -142,7 +143,6 @@ def _create_overdue_reviews(invoices):
 
 def _create_followup_tasks(invoices):
 	"""Overdue follow-up: create a sales ToDo task and a phone-call Event."""
-	from ai_saas.saas.tenant_lifecycle import get_settings
 
 	threshold = get_settings().overdue_followup_days
 	flagged = [inv for inv in invoices if inv.days_overdue >= threshold]
@@ -154,11 +154,11 @@ def _create_followup_tasks(invoices):
 		if not contract:
 			continue
 
-		# Deduplicate: skip if an open ToDo already exists for this contract
-		if frappe.db.exists(
-			"ToDo",
-			{"reference_type": "Contract", "reference_name": contract, "status": "Open"},
-		):
+		# Deduplicate per (contract, invoice): the marker survives status changes, so a
+		# closed or orphaned ToDo can never silence future follow-ups for other invoices.
+		marker = f"[followup:{contract}:{inv.name}]"
+		if frappe.db.exists("ToDo", {"reference_type": "Contract", "reference_name": contract,
+		                             "description": ("like", f"%{marker}%")}):
 			continue
 
 		customer_name = (
@@ -167,14 +167,19 @@ def _create_followup_tasks(invoices):
 		description = (
 			f"Fatura {inv.name} em atraso há {inv.days_overdue} dias.\n"
 			f"Valor em dívida: {inv.outstanding_amount} — Vencimento: {inv.due_date}\n"
-			f"Contactar o cliente {customer_name} para regularização do pagamento."
+			f"Contactar o cliente {customer_name} para regularização do pagamento.\n"
+			f"{marker}"
 		)
-
+		assignee = (
+			frappe.db.get_value("Contract", contract, "mz_account_manager")
+			or get_settings().default_sales_user
+		)
 		frappe.get_doc({
 			"doctype": "ToDo",
 			"status": "Open",
 			"priority": "High",
 			"date": nowdate(),
+			"allocated_to": assignee,
 			"reference_type": "Contract",
 			"reference_name": contract,
 			"description": description,

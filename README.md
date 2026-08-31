@@ -263,6 +263,22 @@ existing Subscription, `mz_direct = 1`, Customer primaries, Opportunity → Acti
 Hooks never run (no second Subscription, no invoice today, no customer email); a contract with
 zero non-cancelled Subscriptions is registered unlinked, more than one is skipped for a human.
 
+## Winding down a legacy account
+
+`archive_now` archives an already-registered account today, in one email (temporary tooling,
+same module as the inventory):
+
+```bash
+bench --site <site> execute ai_saas.saas.legacy_migration.archive_now \
+  --kwargs "{'items': '@archive.csv', 'dry_run': 1}"        # then 0; 'quiet': 1 = no emails, no campaign
+```
+
+Per contract: `suspend(notify=False)` when still Active (only the gate `archive()` requires),
+then `archive()` — backup, verify, drop-site, Opportunity `Cloud - Closed`/Lost with the G3
+clock stamped. The customer gets "Conta Arquivada" that day and the `Conta Encerrada` campaign
+at +3/+30 — which reaches **any** account shape: the templates resolve the Contract through
+`crm.find_contract` (the derived mirror of `find_opportunity`), never through the signup.
+
 ## Inventory of legacy accounts
 
 Before touching accounts the old funnel created, look at them:

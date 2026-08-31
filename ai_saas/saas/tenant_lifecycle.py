@@ -35,67 +35,17 @@ from ai_saas.saas.provisioning import (
 	get_db_root_user,
 	run_cmd,
 )
+from ai_saas.saas.settings import get_settings
 
 ARCHIVE_TIMEOUT = 1800  # backup + drop-site of a full tenant site
 MAINTENANCE_TIMEOUT = 60
-
-
-def get_settings():
-	"""MZ SaaS Settings with fail-safe defaults.
-
-	get_single_value returns None until the Single is saved once — and the
-	fail-safe reading of "never configured" must be dry-run ON.
-	"""
-	raw = frappe._dict(
-		(f, frappe.db.get_single_value("MZ SaaS Settings", f))
-		for f in (
-			"trial_length_days",
-			"commercial_customer_group",
-			"auto_suspend",
-			"auto_archive",
-			"overdue_days_to_suspend",
-			"grace_days_to_archive",
-			"archive_retention_days",
-			"prebilling_reminder_days",
-			"overdue_followup_days",
-			"ops_alert_recipients",
-			"usage_report_recipients",
-			"default_sales_user",
-			"max_concurrent_trials",
-			"max_signups_per_day",
-		)
-	)
-	return frappe._dict(
-		trial_length_days=cint(raw.trial_length_days) or 14,
-		commercial_customer_group=raw.commercial_customer_group,
-		scheduler_plans=frappe.get_all(
-			"MZ Scheduler Plan", {"parent": "MZ SaaS Settings", "parenttype": "MZ SaaS Settings"}, pluck="subscription_plan"
-		),
-		# None (never saved) must read as OFF: nothing executes until someone ticks the box.
-		auto_suspend=cint(raw.auto_suspend),
-		auto_archive=cint(raw.auto_archive),
-		overdue_days_to_suspend=cint(raw.overdue_days_to_suspend) or 33,
-		grace_days_to_archive=cint(raw.grace_days_to_archive) or 30,
-		archive_retention_days=cint(raw.archive_retention_days) or 180,
-		prebilling_reminder_days=cint(raw.prebilling_reminder_days) or 4,
-		overdue_followup_days=cint(raw.overdue_followup_days) or 7,
-		ops_alert_recipients=[
-			e.strip() for e in (raw.ops_alert_recipients or "").replace("\n", ",").split(",") if e.strip()
-		],
-		usage_report_recipients=[
-			e.strip() for e in (raw.usage_report_recipients or "").replace("\n", ",").split(",") if e.strip()
-		],
-		default_sales_user=raw.default_sales_user,
-		max_concurrent_trials=cint(raw.max_concurrent_trials) or 20,
-		max_signups_per_day=cint(raw.max_signups_per_day) or 10,
-	)
 
 
 # ---------------------------------------------------------------------------
 # The three operations
 # ---------------------------------------------------------------------------
 
-def suspend(contract_name, reason="", cause="manual", invoice=None):
+def suspend(contract_name, reason="", cause="manual", invoice=None, notify=True):
 	"""Block access to the contract's site. Data intact, fully reversible.
 	`cause` ("trial" | "overdue" | "manual") and `invoice` shape the customer's email."""
 	prov = _get_prov(contract_name)
@@ -117,7 +67,8 @@ def suspend(contract_name, reason="", cause="manual", invoice=None):
 	crm.report_for_contract(
 		contract_name, crm.STAGE_TRIAL_EXPIRED if cause == "trial" else crm.STAGE_SUSPENDED
 	)
-	send_lifecycle_email("suspended", contract_name, cause=cause, invoice=invoice or "")
+	if notify:
+		send_lifecycle_email("suspended", contract_name, cause=cause, invoice=invoice or "")
 
 
 def reactivate(contract_name, new_start_date=None, force=False, notify=True):
@@ -159,7 +110,7 @@ def reactivate(contract_name, new_start_date=None, force=False, notify=True):
 		send_lifecycle_email("reactivated", contract_name, new_trial_end=new_start_date or "")
 
 
-def archive(contract_name):
+def archive(contract_name, notify=True):
 	"""Full backup, verify, destroy. The one irreversible act — triple-gated:
 	the site must be Suspended, the grace period elapsed (checked by the caller
 	— the daily rule), and the backup verified before drop-site runs."""
@@ -196,7 +147,8 @@ def archive(contract_name):
 	)
 	_log(prov, f"Arquivado. Backup em: {archived_path}")
 	crm.report_for_contract(contract_name, crm.STAGE_CLOSED, status="Lost")
-	send_lifecycle_email("archived", contract_name)
+	if notify:
+		send_lifecycle_email("archived", contract_name)
 
 
 # ---------------------------------------------------------------------------
