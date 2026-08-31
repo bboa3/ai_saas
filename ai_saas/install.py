@@ -333,9 +333,10 @@ LIFECYCLE_EMAIL_TEMPLATES = {
 		"<p>A conta da <strong>{{ customer_name }}</strong> em {{ site_name }} esteve suspensa"
 		"{% if suspended_on %} desde {{ suspended_on }}{% endif %} e foi arquivada hoje.</p>"
 		"<p>Antes de a desligar fizemos uma <strong>cópia de segurança completa</strong> de todos os dados — facturas, clientes, artigos, documentos anexados. Nada se perdeu.</p>"
-		"<p>Guardamos essa cópia durante <strong>{{ retention_days }} dias</strong>. Dentro desse prazo, "
-		'<a href="{{ reactivation_url }}">peça a reactivação</a>, responda a este email ou fale connosco pelo WhatsApp: '
-		"a nossa equipa restaura a conta a partir da cópia e a {{ customer_name }} continua exactamente de onde parou.</p>"
+		"<p>Para ter a conta de volta basta pedir: "
+		'<a href="{{ reactivation_url }}">peça a reactivação</a>, responda a este email ou fale connosco pelo WhatsApp. '
+		"A nossa equipa restaura a conta a partir da cópia e a {{ customer_name }} continua exactamente de onde parou — "
+		"quanto mais cedo pedir, mais rápido está de volta.</p>"
 		+ _FOOTER,
 	},
 	"MozEconomia Cloud - Conta Activada": {
