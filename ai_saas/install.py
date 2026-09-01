@@ -492,7 +492,9 @@ _CONTRACT_TEMPLATE_TERMS = """
 <p>Contrato de prestação de serviços entre a MozEconomia, SA e <strong>{{ party_name }}</strong>.</p>
 <ol>
 <li><strong>Objecto.</strong> Disponibilização da plataforma MozEconomia Cloud, no plano
-<strong>{{ mz_subscription_plan }}</strong>, acessível em {{ mz_tenant_url }}.</li>
+<strong>{{ mz_subscription_plan }}</strong>, para {{ mz_users or 2 }} utilizador(es) — o primeiro
+está incluído no plano e os restantes são facturados por utilizador —, acessível em
+{{ mz_tenant_url }}.</li>
 <li><strong>Período experimental.</strong> Até {{ frappe.utils.formatdate(start_date) }} a utilização
 é gratuita e sem compromisso. A facturação inicia apenas após a assinatura deste contrato,
 nunca antes dessa data.</li>

@@ -57,6 +57,7 @@
     // Only asked when the typed address named no city we could recognise.
     city: function (v) { return $("#city-row").hidden || v.length >= 2 ? "" : "Indique a cidade."; },
     subdomain: function (v) { return /^[a-z0-9][a-z0-9\-]{1,38}[a-z0-9]$/.test(v) ? "" : "Só letras minúsculas, números e hífens (3 a 40 caracteres)."; },
+    users: function (v) { var min = cfg.minimumUsers || 2; return (parseInt(v, 10) || 0) >= min ? "" : "O plano é por utilizador — mínimo " + min + " utilizador(es)."; },
     terms_accepted: function (v) { return v ? "" : "É necessário aceitar os termos para criar a conta."; }
   };
   function validate(field) { var msg = rules[field] ? rules[field](val(field)) : ""; showError(field, msg); return !msg; }
@@ -80,14 +81,30 @@
   // ---- plan: chosen on step 3, preselected from the pricing page's ?plan= -----
   function planLabel(name) { var r = document.querySelector('input[name="plan"][value="' + name + '"]'); return r ? r.parentNode.textContent.trim().replace(/\s+/g, " ") : name; }
   function currentPlan() { var r = document.querySelector('input[name="plan"]:checked'); return r ? r.value : cfg.preselectedPlan; }
-  function setPlan(name) { var r = document.querySelector('input[name="plan"][value="' + name + '"]'); if (r) r.checked = true; $("#reg-plan-label").textContent = planLabel(currentPlan()); }
+  function setPlan(name) { var r = document.querySelector('input[name="plan"][value="' + name + '"]'); if (r) r.checked = true; $("#reg-plan-label").textContent = planLabel(currentPlan()); paintTotal(); }
+  // Per-user pricing with the first user included: N seats bill N-1 plan costs (min 1).
+  function paintTotal() {
+    var out = $("#reg-plan-total"); if (!out) return;
+    var r = document.querySelector('input[name="plan"]:checked');
+    var users = parseInt(val("users"), 10) || 0;
+    var cost = r ? parseFloat(r.dataset.cost) : 0;
+    if (!r || !cost || users < 1) { out.textContent = ""; return; }
+    var billed = Math.max(users - 1, 1);
+    var per = (r.dataset.currency || "MZN") + "/" + (r.dataset.interval === "Month" ? "mês" : "ano");
+    var fmt = function (n) { return n.toLocaleString("pt-PT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    out.textContent = users > 1
+      ? users + " utilizadores (1.º incluído): " + billed + " × " + fmt(cost) + " = " + fmt(cost * billed) + " " + per
+      : "1 utilizador = " + fmt(cost) + " " + per;
+  }
+  var usersInput = document.getElementById("users");
+  if (usersInput) usersInput.addEventListener("input", paintTotal);
   setPlan(cfg.preselectedPlan);
   $("#reg-plan-change").addEventListener("click", function () {
     var c = $("#reg-plan-choices"); c.hidden = !c.hidden; this.setAttribute("aria-expanded", c.hidden ? "false" : "true");
     this.textContent = c.hidden ? "alterar" : "fechar";
   });
   $$('input[name="plan"]').forEach(function (r) { r.addEventListener("change", function () {
-    $("#reg-plan-label").textContent = planLabel(r.value);
+    $("#reg-plan-label").textContent = planLabel(r.value); paintTotal();
     var c = $("#reg-plan-choices"); c.hidden = true; $("#reg-plan-change").setAttribute("aria-expanded", "false"); $("#reg-plan-change").textContent = "alterar";
   }); });
   function fillSummary() {
@@ -154,13 +171,13 @@
   });
   $("#reg-submit").addEventListener("click", function () {
     var btn = this; var g = $("#reg-global-err"); g.classList.remove("show");
-    if (!validate("subdomain") || !validate("terms_accepted")) return;
+    if (!validate("subdomain") || !validate("users") || !validate("terms_accepted")) return;
     var label = btn.textContent; btn.disabled = true;
     // Creating the account is two calls and half a dozen documents — seconds, not
     // milliseconds. The waiting belongs on the progress screen, not on a dead button:
     // show it at once and let the answer arrive underneath it.
     working("A criar a sua conta…", "Estamos a preparar tudo. Não feche esta página — demora alguns segundos.");
-    api("update", { token: token, step: 3, data: { subdomain: val("subdomain"), plan: currentPlan(), terms_accepted: 1 } })
+    api("update", { token: token, step: 3, data: { subdomain: val("subdomain"), plan: currentPlan(), users: val("users"), terms_accepted: 1 } })
       .then(function () { return api("submit", { token: token }); })
       .then(function (r) { try { terminal(r); } catch (e) { console.error("registo: terminal", e); throw "Conta criada, mas a página não conseguiu mostrar o resultado. Verifique o seu email."; } })
       .catch(function (msg) {
@@ -220,7 +237,7 @@
         var el = document.getElementById(k); if (!el || r.fields[k] == null) return;
         if (el.type === "checkbox") el.checked = !!r.fields[k]; else el.value = r.fields[k];
       });
-      if (r.fields.plan) setPlan(r.fields.plan);
+      if (r.fields.plan) setPlan(r.fields.plan); else paintTotal();
     }
     if (r.state === "continue") show(Math.min(Math.max(r.step || 1, 1), 3)); else terminal(r);
   }

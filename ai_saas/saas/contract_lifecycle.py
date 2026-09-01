@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import getdate, nowdate
+from frappe.utils import cint, getdate, nowdate
 
 from ai_saas.saas import crm
 from ai_saas.saas.settings import get_settings
@@ -60,6 +60,16 @@ def on_contract_signed(doc, method=None):
 			"O plano não pode ser alterado depois de a subscrição existir. "
 			"Cancele a subscrição ligada antes de mudar o plano."
 		)
+
+	# Seats follow the contract: mz_users is editable after submit, and a change on a
+	# live subscription mirrors into its plan-row qty. This must run BEFORE the
+	# is_signed early-returns below — an already-signed contract never gets past them.
+	if (
+		before is not None
+		and doc.get("mz_linked_subscription")
+		and cint(before.get("mz_users") or 0) != cint(doc.get("mz_users") or 0)
+	):
+		_sync_subscription_seats(doc)
 
 	if not doc.is_signed:
 		return
@@ -130,6 +140,34 @@ def _maybe_provision_tenant(doc):
 		)
 
 
+def _billed_qty(users):
+	"""Per-user pricing with the first user included: N contracted seats bill N-1
+	units of the plan cost, never below 1. Two users cost one plan (the entry
+	price), each further user adds one plan cost. An empty field (desk/legacy
+	contract) bills 1, exactly the pre-seats flat behaviour."""
+	return max(cint(users) - 1, 1)
+
+
+def _sync_subscription_seats(doc):
+	"""Contract.mz_users is the contracted-seats source; the linked Subscription's
+	plan row mirrors _billed_qty(mz_users). Native invoice generation reads qty at
+	generation time, so the change lands on the next invoice ERPNext generates — no
+	proration. (On a period-start day, a change saved before the daily job lands on
+	that day's invoice; after it, on the following period's.)"""
+	if cint(doc.get("mz_users")) < 1:
+		frappe.throw("Indique pelo menos 1 utilizador — a subscrição factura por utilizador.")
+	qty = _billed_qty(doc.get("mz_users"))
+	sub_name = doc.get("mz_linked_subscription")
+	if not frappe.db.exists("Subscription", sub_name):
+		return
+	sub = frappe.get_doc("Subscription", sub_name)
+	for row in sub.plans:
+		row.qty = qty
+	# No commit: this runs inside the Contract's own save, same rationale as
+	# _setup_subscription. Subscription has no doc_events hooked, so no recursion.
+	sub.save(ignore_permissions=True)
+
+
 def on_contract_cancel(doc, method=None):
 	"""Cancel the linked Subscription when the contract is cancelled."""
 	sub_name = doc.get("mz_linked_subscription")
@@ -169,6 +207,12 @@ def _setup_subscription(doc):
 
 	billing_start = compute_billing_start(doc)
 
+	# Per-user pricing with the first user included: qty = mz_users - 1, floor 1
+	# (see _billed_qty). An empty field — desk/legacy contracts — also bills 1,
+	# the pre-seats flat behaviour; the self-service minimum is a form rule,
+	# enforced before the field lands here.
+	qty = _billed_qty(doc.get("mz_users"))
+
 	sub = frappe.get_doc({
 		"doctype": "Subscription",
 		"party_type": "Customer",
@@ -181,19 +225,20 @@ def _setup_subscription(doc):
 		"days_until_due": 7,
 		"generate_new_invoices_past_due_date": 0,
 		"sales_tax_template": _get_default_tax_template(company),
-		"plans": [{"plan": plan_name, "qty": 1}],
+		"plans": [{"plan": plan_name, "qty": qty}],
 	})
 	# Subscription is not submittable — insert() is sufficient. The controller
 	# auto-sets status="Active" during validate. No commit here: this runs inside
 	# the Contract's own save, and a later failure in that save must roll it back.
 	sub.insert(ignore_permissions=True)
 
-	frappe.db.set_value(
-		"Contract",
-		doc.name,
-		{"mz_linked_subscription": sub.name, "mz_billing_start": billing_start},
-		update_modified=False,
-	)
+	linked_values = {"mz_linked_subscription": sub.name, "mz_billing_start": billing_start}
+	if not cint(doc.get("mz_users")):
+		# Normalise an empty seats field to what the billed qty entitles (billed + 1,
+		# the included first user); a value Sales typed is never overwritten.
+		linked_values["mz_users"] = qty + 1
+		doc.mz_users = qty + 1
+	frappe.db.set_value("Contract", doc.name, linked_values, update_modified=False)
 	doc.mz_linked_subscription = sub.name
 	doc.mz_billing_start = billing_start
 	_ensure_customer_primary_contact(doc)

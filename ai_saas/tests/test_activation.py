@@ -133,6 +133,38 @@ class TestActivation(FunnelTestCase):
 		self.assertTrue(again.get("already_signed"))
 		self.assertEqual(frappe.db.count("Subscription", {"party": TEST_CUSTOMER}), 1)
 
+	# ---- Per-user pricing: seats at activation -------------------------------------
+
+	def test_activate_sets_seats_and_subscription_qty(self):
+		doc = self._make_trial(add_days(nowdate(), 14))
+		with patch("ai_saas.saas.provisioning.provision_tenant"), \
+		     patch("ai_saas.saas.activation.send_lifecycle_email"):
+			activation._activate(
+				doc.name, activation.get_activation_token(doc.name), users=3, accept_terms=1
+			)
+		c = frappe.db.get_value("Contract", doc.name, ["mz_users", "mz_linked_subscription"], as_dict=True)
+		self.assertEqual(c.mz_users, 3)
+		# First user included: 3 seats bill 2 plan costs.
+		self.assertEqual(
+			frappe.db.get_value("Subscription Plan Detail", {"parent": c.mz_linked_subscription}, "qty"), 2
+		)
+
+	def test_activate_enforces_the_seat_floor(self):
+		doc = self._make_trial(add_days(nowdate(), 14))
+		with self.assertRaises(frappe.ValidationError):
+			activation._activate(
+				doc.name, activation.get_activation_token(doc.name), users=1, accept_terms=1
+			)
+		self.assertEqual(frappe.db.get_value("Contract", doc.name, "is_signed"), 0)
+
+	def test_seats_locked_once_subscription_linked(self):
+		doc = self._make_trial(add_days(nowdate(), 14))
+		frappe.db.set_value("Contract", doc.name, "mz_linked_subscription", "SUB-FAKE-E", update_modified=False)
+		with self.assertRaises(frappe.ValidationError):
+			activation._activate(
+				doc.name, activation.get_activation_token(doc.name), users=4, accept_terms=1
+			)
+
 	def test_billing_address_update_path_and_nuit_validation(self):
 		doc = self._make_trial(add_days(nowdate(), 14))
 		token = activation.get_activation_token(doc.name)

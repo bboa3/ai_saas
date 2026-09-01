@@ -294,6 +294,49 @@ class TestSignup(FrappeTestCase):
 		st = signup._status(r["token"])
 		self.assertEqual(st["fields"]["company_name"], COMPANY)  # token holders get their values back
 
+	# ---- Per-user pricing: seats in the signup -----------------------------------
+
+	def test_seats_floor_and_storage(self):
+		from ai_saas.saas.accounts import _validate_step
+		from ai_saas.saas.settings import get_settings
+
+		self.assertEqual(get_settings().minimum_users, 2)  # code default on an unconfigured Single
+
+		values = {"users": 1}
+		with self.assertRaises(frappe.ValidationError):
+			_validate_step(3, values)  # below the self-service floor
+		values = {"users": 1}
+		_validate_step(3, values, minimum_users=1)  # the desk override: Sales may set 1
+		self.assertEqual(values["users"], 1)
+		values = {"users": "4"}
+		_validate_step(3, values)
+		self.assertEqual(values["users"], 4)  # normalised to int
+
+		token = self._walk_to_step3()
+		signup._update(token, 3, {"subdomain": SLUG, "plan": PLAN, "users": 5, "terms_accepted": 1})
+		self.assertEqual(frappe.db.get_value("MZ Signup", {"resume_token": token}, "users"), 5)
+		st = signup._status(token)
+		self.assertEqual(st["fields"]["users"], 5)  # PUBLIC_FIELDS echo for the resume path
+
+	@patch("ai_saas.saas.provisioning.provision_tenant")
+	def test_submit_maps_users_to_contract_seats(self, provision):
+		provision.side_effect = self._fake_provision()
+		token = self._walk_to_step3()
+		signup._update(token, 3, {"subdomain": SLUG, "plan": PLAN, "users": 4, "terms_accepted": 1})
+		signup._submit(token)
+		doc = frappe.get_doc("MZ Signup", {"resume_token": token})
+		self.assertEqual(frappe.db.get_value("Contract", doc.contract, "mz_users"), 4)
+
+	@patch("ai_saas.saas.provisioning.provision_tenant")
+	def test_submit_stamps_floor_when_seats_missing(self, provision):
+		"""A legacy in-flight signup without the field converts at the advertised minimum."""
+		provision.side_effect = self._fake_provision()
+		token = self._walk_to_step3()
+		frappe.db.set_value("MZ Signup", {"resume_token": token}, "users", 0)
+		signup._submit(token)
+		doc = frappe.get_doc("MZ Signup", {"resume_token": token})
+		self.assertEqual(frappe.db.get_value("Contract", doc.contract, "mz_users"), 2)
+
 	def test_slug_from_company_is_typeable(self):
 		self.assertEqual(signup.slug_from_company("Farmácia Central, Lda"), "farmacia-central")
 		self.assertEqual(signup.slug_from_company("João & Filhos Comércio Geral Limitada"), "joao-filhos-comercio")

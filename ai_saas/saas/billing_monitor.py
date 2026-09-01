@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import add_days, getdate, nowdate
+from frappe.utils import add_days, cint, getdate, nowdate
 
 from ai_saas.saas.settings import get_settings
 
@@ -43,24 +43,26 @@ def _send_prebilling_reminders():
 		contract = frappe.db.get_value(
 			"Contract",
 			{"mz_linked_subscription": sub.name},
-			["name", "contact_email"],
+			["name", "contact_email", "mz_users"],
 			as_dict=True,
 		)
 		if not contract or not contract.contact_email:
 			continue
 
-		# Resolve plan details for estimated amount
-		plan_name = frappe.db.get_value(
-			"Subscription Plan Detail", {"parent": sub.name}, "plan"
+		# Resolve plan details for the estimated amount. The plan cost is a per-user
+		# rate (per-user pricing): the invoice total is cost x the plan row's qty.
+		plan_row = frappe.db.get_value(
+			"Subscription Plan Detail", {"parent": sub.name}, ["plan", "qty"], as_dict=True
 		)
 		plan = frappe.db.get_value(
-			"Subscription Plan", plan_name, ["plan_name", "cost", "currency"], as_dict=True
-		) if plan_name else None
+			"Subscription Plan", plan_row.plan, ["plan_name", "cost", "currency"], as_dict=True
+		) if plan_row else None
+		qty = (cint(plan_row.qty) or 1) if plan_row else 1
 
-		_send_prebilling_email(sub, contract, plan, lead_days)
+		_send_prebilling_email(sub, contract, plan, qty, lead_days)
 
 
-def _send_prebilling_email(sub, contract, plan, lead_days):
+def _send_prebilling_email(sub, contract, plan, qty, lead_days):
 	"""Send the pre-billing email for a single subscription."""
 	from frappe.utils.formatters import format_value
 
@@ -68,7 +70,14 @@ def _send_prebilling_email(sub, contract, plan, lead_days):
 	end = frappe.utils.formatdate(sub.current_invoice_end)
 
 	if plan and plan.cost:
-		amount_line = format_value(plan.cost, {"fieldtype": "Currency", "currency": plan.currency})
+		amount_line = format_value(plan.cost * qty, {"fieldtype": "Currency", "currency": plan.currency})
+		if qty > 1:
+			# First user included: seats = billed + 1 (the contract's mz_users when set).
+			seats = cint(contract.get("mz_users")) or qty + 1
+			unit_line = format_value(plan.cost, {"fieldtype": "Currency", "currency": plan.currency})
+			amount_line = (
+				f"{seats} utilizadores (1.º incluído): {qty} × {unit_line} = {amount_line}"  # noqa: RUF001 (customer-facing sign)
+			)
 		amount_text = f"<tr><td style='padding:4px 16px 4px 0'><strong>Valor Estimado:</strong></td><td>{amount_line}</td></tr>"
 	else:
 		amount_text = ""

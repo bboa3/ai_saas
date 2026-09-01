@@ -7,3 +7,4 @@ ai_saas.patches.v1.drop_multipay_payment_request_doctype
 # Patches added in this section will be executed after doctypes are migrated
 ai_saas.patches.v1.fix_autoincrement_child_tables
 ai_saas.patches.v1.fix_tipo_de_negocio_autoincrement
+ai_saas.patches.v1.set_contract_users_from_subscription

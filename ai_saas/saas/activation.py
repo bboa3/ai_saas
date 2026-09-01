@@ -18,6 +18,7 @@ from erpnext_mz.qr_code.qr_generator import _generate_validation_hash, validate_
 from frappe.utils import get_url, now_datetime
 
 from ai_saas.saas.lifecycle_mail import send_lifecycle_email
+from ai_saas.saas.settings import get_settings
 
 DOCTYPE = "Contract"
 
@@ -80,6 +81,7 @@ def get_activation_context(contract_name: str, token: str) -> dict:
 
 	ctx.phase = account_phase(c.name)
 	ctx.plans = cloud_plans()
+	ctx.minimum_users = get_settings().minimum_users
 	ctx.customer = frappe.db.get_value(
 		"Customer", c.party_name, ["customer_name", "tax_id", "email_id", "mobile_no"], as_dict=True
 	) or frappe._dict(customer_name=c.party_name)
@@ -111,7 +113,7 @@ def _get_billing_address(customer_name: str):
 # ---------------------------------------------------------------------------
 
 @frappe.whitelist(allow_guest=True)
-def activate(contract, token, plan=None, tax_id=None, address_line1=None, address_line2=None,
+def activate(contract, token, plan=None, users=None, tax_id=None, address_line1=None, address_line2=None,
              city=None, contact_phone=None, accept_terms=0):
 	"""Guest endpoint behind the page's confirm button. Thin wrapper: rate-limited
 	per contract at the whitelist layer; the work is in _activate so tests call it
@@ -121,13 +123,13 @@ def activate(contract, token, plan=None, tax_id=None, address_line1=None, addres
 	_limit(limit=10, seconds=60)                         # per IP
 	_limit(identity=f"contract:{contract}", limit=10, seconds=60)
 	return _activate(
-		contract, token, plan=plan, tax_id=tax_id, address_line1=address_line1,
+		contract, token, plan=plan, users=users, tax_id=tax_id, address_line1=address_line1,
 		address_line2=address_line2, city=city, contact_phone=contact_phone,
 		accept_terms=frappe.utils.cint(accept_terms),
 	)
 
 
-def _activate(contract_name, token, plan=None, tax_id=None, address_line1=None,
+def _activate(contract_name, token, plan=None, users=None, tax_id=None, address_line1=None,
               address_line2=None, city=None, contact_phone=None, accept_terms=0):
 	if not is_valid_token(contract_name, token):
 		frappe.throw("Ligação de activação inválida ou expirada.", frappe.PermissionError)
@@ -156,6 +158,15 @@ def _activate(contract_name, token, plan=None, tax_id=None, address_line1=None,
 		if not frappe.db.exists("Subscription Plan", plan):
 			frappe.throw("Plano inválido.")
 		c.mz_subscription_plan = plan
+	# Seats mirror the plan rule: correctable here until the Subscription exists.
+	# The same save signs the contract, so _setup_subscription reads the fresh value.
+	if users is not None and frappe.utils.cint(users) != frappe.utils.cint(c.get("mz_users") or 0):
+		if c.get("mz_linked_subscription"):
+			frappe.throw("O número de utilizadores já não pode ser alterado aqui — existe uma subscrição ligada.")
+		floor = get_settings().minimum_users
+		if frappe.utils.cint(users) < floor:
+			frappe.throw(f"O plano é por utilizador — mínimo {floor} utilizador(es).")
+		c.mz_users = frappe.utils.cint(users)
 	if tax_id is not None and tax_id.strip():
 		from ai_saas.api.signup import NUIT_RE
 

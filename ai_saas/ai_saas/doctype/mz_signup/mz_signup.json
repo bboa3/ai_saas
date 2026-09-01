@@ -30,6 +30,7 @@
   "city",
   "section_account",
   "subdomain",
+  "users",
   "mz_domain",
   "venda_directa",
   "trial_days",
@@ -196,6 +197,13 @@
    "label": "Subdomínio"
   },
   {
+   "fieldname": "users",
+   "fieldtype": "Int",
+   "label": "Utilizadores",
+   "default": "2",
+   "non_negative": 1
+  },
+  {
    "fieldname": "mz_domain",
    "fieldtype": "Select",
    "label": "Domínio",
@@ -270,7 +278,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-30 10:00:00",
+ "modified": "2026-09-01 12:00:00",
  "modified_by": "Administrator",
  "module": "AI SaaS",
  "name": "MZ Signup",

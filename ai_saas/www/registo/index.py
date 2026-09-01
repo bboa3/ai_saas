@@ -60,6 +60,9 @@ def build_context(context, domain):
 	context.cities = sorted(CITY_PROVINCE)
 	context.tax_regimes = ["Normal (16%)", "Regime Especial/Reduzida", "Isento", "Não sei"]
 	context.trial_days = frappe.db.get_single_value("MZ SaaS Settings", "trial_length_days") or 14
+	from ai_saas.saas.settings import get_settings
+
+	context.minimum_users = get_settings().minimum_users
 
 	plan = (frappe.form_dict.get("plan") or "").strip()
 	context.preselected_plan = plan if any(p.name == plan for p in context.plans) else (

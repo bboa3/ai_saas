@@ -16,6 +16,7 @@
     domain: {{ domain | tojson }},
     route: {{ route | tojson }},
     presetIndustry: {{ (preset_industry or "") | tojson }},
+    minimumUsers: {{ (minimum_users or 2) | tojson }},
     assetVersion: {{ (asset_version or 0) | tojson }}
   };
 </script>
@@ -106,6 +107,10 @@
     <div class="reg__err" role="alert" aria-live="polite" data-for="subdomain"></div>
     <div class="reg__domain" id="reg-domain-preview" aria-live="polite">Vai entrar em <span id="reg-domain-url">https://sua-empresa{{ domain }}</span></div>
     <div class="reg__ok" id="reg-subdomain-ok" hidden>Disponível ✓</div>
+        <label for="users">Utilizadores</label>
+        <input id="users" name="users" type="number" inputmode="numeric" min="{{ minimum_users }}" step="1"
+          value="{{ minimum_users }}">
+        <div class="reg__err" role="alert" aria-live="polite" data-for="users"></div>
         <label>Plano</label>
         <div class="reg__plan-pill" id="reg-plan-pill">
           <span id="reg-plan-label"></span>
@@ -114,11 +119,13 @@
         </div>
         <div class="reg__plan-choices" id="reg-plan-choices" role="radiogroup" aria-label="Plano" hidden>
           {% for p in plans %}
-          <label class="reg__choice"><input type="radio" name="plan" value="{{ p.name }}"> {{ p.plan_name or p.name }}
+          <label class="reg__choice"><input type="radio" name="plan" value="{{ p.name }}" data-cost="{{ p.cost }}"
+              data-currency="{{ p.currency }}" data-interval="{{ p.billing_interval }}"> {{ p.plan_name or p.name }}
             <span class="reg__price">{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{
-              "mês" if p.billing_interval == "Month" else "ano" }}</span></label>
+              "mês" if p.billing_interval == "Month" else "ano" }} por utilizador · 1.º incluído</span></label>
           {% endfor %}
         </div>
+        <div class="reg__domain" id="reg-plan-total" aria-live="polite"></div>
     <label class="reg__check"><input type="checkbox" id="terms_accepted"> Li e aceito os <a href="/termos" target="_blank" rel="noopener">termos de serviço</a> e a <a href="https://mozeconomia.co.mz/politica-de-privacidade" target="_blank" rel="noopener">política de privacidade</a>.</label>
     <div class="reg__err" role="alert" aria-live="polite" data-for="terms_accepted"></div>
     <div class="reg__row">

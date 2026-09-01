@@ -47,12 +47,18 @@
         <label class="reg__choice">
           <span><input type="radio" name="plan" value="{{ p.name }}"
             data-label="{{ p.plan_name or p.name }}"
-            data-price="{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ "mês" if p.billing_interval == "Month" else "ano" }}"
+            data-cost="{{ p.cost }}" data-currency="{{ p.currency }}" data-interval="{{ p.billing_interval }}"
+            data-price="{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ "mês" if p.billing_interval == "Month" else "ano" }} por utilizador · 1.º incluído"
             {% if p.name == contract.mz_subscription_plan %}checked{% endif %}> {{ p.plan_name or p.name }}</span>
-          <span class="reg__price">{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ "mês" if p.billing_interval == "Month" else "ano" }}</span>
+          <span class="reg__price">{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ "mês" if p.billing_interval == "Month" else "ano" }} por utilizador · 1.º incluído</span>
         </label>
         {% endfor %}
       </div>
+
+      <label for="act-users" class="reg__section" style="display:block">Utilizadores</label>
+      <input id="act-users" name="users" type="number" inputmode="numeric" step="1"
+        min="{{ minimum_users }}" value="{{ contract.mz_users or minimum_users }}">
+      <div class="reg__domain" id="act-plan-total" aria-live="polite"></div>
 
       <button class="reg__btn" id="btn-activate">Assinar e activar a minha conta</button>
       <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
@@ -94,8 +100,20 @@
   function paintPlan() {
     var r = document.querySelector("#act-plan-choices input:checked");
     $("act-plan-label").textContent = r ? r.dataset.label + " " + r.dataset.price : "—";
+    // Per-user pricing with the first user included: N seats bill N-1 plan costs (min 1).
+    var users = parseInt($("act-users").value, 10) || 0;
+    var cost = r ? parseFloat(r.dataset.cost) : 0;
+    var out = $("act-plan-total");
+    if (!r || !cost || users < 1) { out.textContent = ""; return; }
+    var billed = Math.max(users - 1, 1);
+    var per = (r.dataset.currency || "MZN") + "/" + (r.dataset.interval === "Month" ? "mês" : "ano");
+    var fmt = function (n) { return n.toLocaleString("pt-PT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    out.textContent = users > 1
+      ? users + " utilizadores (1.º incluído): " + billed + " × " + fmt(cost) + " = " + fmt(cost * billed) + " " + per
+      : "1 utilizador = " + fmt(cost) + " " + per;
   }
   paintPlan();
+  $("act-users").addEventListener("input", paintPlan);
   function openChoices(open) {
     choices.hidden = !open;
     var link = $("act-plan-change");
@@ -117,6 +135,7 @@
         contract: {{ contract.name | tojson }},
         token: {{ token | tojson }},
         plan: plan ? plan.value : null,
+        users: parseInt($("act-users").value, 10) || null,
         accept_terms: 1
       },
       callback: function (r) {

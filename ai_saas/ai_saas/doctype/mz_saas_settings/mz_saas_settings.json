@@ -18,6 +18,7 @@
   "section_billing",
   "prebilling_reminder_days",
   "overdue_followup_days",
+  "minimum_users",
   "section_alerts",
   "ops_alert_recipients",
   "default_sales_user",
@@ -109,6 +110,13 @@
    "default": "7"
   },
   {
+   "fieldname": "minimum_users",
+   "fieldtype": "Int",
+   "label": "Mínimo de Utilizadores (auto-serviço)",
+   "default": "2",
+   "description": "Piso de postos nos formulários de auto-serviço (/registo e /activar). No desk a equipa comercial pode definir qualquer valor ≥ 1."
+  },
+  {
    "fieldname": "section_alerts",
    "fieldtype": "Section Break",
    "label": "Alertas Internos"
@@ -157,7 +165,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-30 10:00:00",
+ "modified": "2026-09-01 12:00:00",
  "modified_by": "Administrator",
  "module": "AI SaaS",
  "name": "MZ SaaS Settings",

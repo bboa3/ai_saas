@@ -28,12 +28,12 @@ def _alert_ops(subject, message):
 STEP_FIELDS = {
 	1: ("full_name", "email", "phone", "plan"),
 	2: ("company_name", "tax_id", "tax_regime", "industry", "address", "city"),
-	3: ("subdomain", "plan", "terms_accepted"),
+	3: ("subdomain", "plan", "users", "terms_accepted"),
 }
 
 NUIT_RE = re.compile(r"^\d{9}$")
 
-def _validate_step(step, values):
+def _validate_step(step, values, minimum_users=None):
 	if step == 1 and "email" in values:
 		email = (values["email"] or "").strip().lower()
 		if not validate_email_address(email):
@@ -61,6 +61,15 @@ def _validate_step(step, values):
 			values["subdomain"] = check["subdomain"]
 		if values.get("plan") and not frappe.db.exists("Subscription Plan", values["plan"]):
 			frappe.throw("Plano inválido.")
+		if values.get("users"):
+			# Per-user pricing: self-service floor from settings; the desk passes
+			# minimum_users=1 (Sales may contract any value >= 1). An empty value is
+			# not validated here — _create_documents stamps the floor on it.
+			users = cint(values["users"])
+			floor = minimum_users if minimum_users is not None else get_settings().minimum_users
+			if users < floor:
+				frappe.throw(f"O plano é por utilizador — mínimo {floor} utilizador(es).")
+			values["users"] = users
 		if "terms_accepted" in values:
 			values["terms_accepted"] = cint(values["terms_accepted"])
 
@@ -255,6 +264,10 @@ def _create_documents(signup):
 		"contract_template": _CONTRACT_TEMPLATE_TITLE, "mz_direct": cint(signup.get("venda_directa")),
 		"mz_subscription_plan": signup.plan, "mz_tenant": slug, "mz_domain": domain, "mz_tenant_url": slug + domain,
 		"mz_segment": signup.industry,
+		# Per-user pricing: contracted seats. Every signup-created contract carries an
+		# explicit number — an empty field (legacy in-flight signup, blanked desk record)
+		# gets the advertised minimum.
+		"mz_users": cint(signup.get("users")) or s.minimum_users,
 		"mz_apps_to_install": [{"app_name": a} for a in apps_for_segment(signup.industry, signup.plan, domain)],
 	}
 	rendered = get_contract_template(_CONTRACT_TEMPLATE_TITLE, contract_fields)
@@ -308,7 +321,7 @@ def create_account_from_desk(signup):
 	for step, fieldnames in STEP_FIELDS.items():
 		values = {f: doc.get(f) for f in fieldnames}
 		values["terms_accepted"] = 1  # o contrato é assinado fora do sistema
-		_validate_step(step, values)
+		_validate_step(step, values, minimum_users=1)  # Sales may contract any seats >= 1
 		doc.update(values)
 	doc.city = _resolve_city(doc.city, doc.address)
 	if not doc.city:

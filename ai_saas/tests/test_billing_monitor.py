@@ -65,6 +65,49 @@ class TestBillingMonitor(FrappeTestCase):
 			billing_monitor._send_prebilling_reminders()
 			billing_monitor._get_overdue_invoices()
 
+	def test_prebilling_email_prices_cost_times_qty(self):
+		"""Per-user pricing: the 'Valor Estimado' is plan cost x the plan row's qty."""
+		from ai_saas.saas.contract_lifecycle import _get_company
+
+		lead_days = billing_monitor.get_settings().prebilling_reminder_days
+		sub = frappe.get_doc({
+			"doctype": "Subscription", "party_type": "Customer", "party": TEST_CUSTOMER,
+			"company": _get_company(), "start_date": nowdate(),
+			"generate_invoice_at": "Beginning of the current subscription period",
+			"plans": [{"plan": TEST_PLAN, "qty": 5}],
+		}).insert(ignore_permissions=True)
+		try:
+			frappe.db.set_value("Subscription", sub.name, "current_invoice_start", add_days(nowdate(), lead_days))
+			# The rolled-back series recycles subscription names, so a stale lab contract
+			# may already point at this name — the reverse lookup must find ours. The
+			# update is uncommitted and dies with the test transaction.
+			frappe.db.sql(
+				"UPDATE tabContract SET mz_linked_subscription = NULL "
+				"WHERE mz_linked_subscription = %s AND name != %s",
+				(sub.name, self.contract.name),
+			)
+			# contact_email is fetched from the Customer's primary contact on insert (there
+			# is none in this suite) — set it directly, the reminder refuses to send without it.
+			frappe.db.set_value("Contract", self.contract.name,
+			                    {"mz_linked_subscription": sub.name, "contact_email": "bm@example.com"},
+			                    update_modified=False)
+			with patch("frappe.sendmail") as sendmail:
+				billing_monitor._send_prebilling_reminders()
+			sent = [c for c in sendmail.call_args_list
+			        if c.kwargs.get("reference_name") == self.contract.name]
+			self.assertEqual(len(sent), 1)
+			message = sent[0].kwargs["message"]
+			# qty 5 with no seats on the contract -> 6 seats shown (billed + the included first).
+			self.assertIn("6 utilizadores (1.º incluído): 5", message)
+			from frappe.utils.formatters import format_value
+
+			total = format_value(5 * 2999, {"fieldtype": "Currency", "currency": "MZN"})
+			self.assertIn(total, message)
+		finally:
+			frappe.db.set_value("Contract", self.contract.name, "mz_linked_subscription", FAKE_SUB,
+			                    update_modified=False)
+			frappe.delete_doc("Subscription", sub.name, force=True, ignore_permissions=True)
+
 	def test_overdue_review_is_created_once_per_invoice(self):
 		inv = self._invoice(1)
 		billing_monitor._create_overdue_reviews([inv])

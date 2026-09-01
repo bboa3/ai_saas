@@ -34,6 +34,7 @@ def get_settings():
 			"archive_retention_days",
 			"prebilling_reminder_days",
 			"overdue_followup_days",
+			"minimum_users",
 			"ops_alert_recipients",
 			"usage_report_recipients",
 			"default_sales_user",
@@ -55,6 +56,8 @@ def get_settings():
 		archive_retention_days=cint(raw.archive_retention_days) or 180,
 		prebilling_reminder_days=cint(raw.prebilling_reminder_days) or 4,
 		overdue_followup_days=cint(raw.overdue_followup_days) or 7,
+		# Self-service floor only: the desk and the qty fallback in _setup_subscription stay at 1.
+		minimum_users=cint(raw.minimum_users) or 2,
 		ops_alert_recipients=[
 			e.strip() for e in (raw.ops_alert_recipients or "").replace("\n", ",").split(",") if e.strip()
 		],

@@ -37,7 +37,7 @@ from ai_saas.saas.settings import get_settings
 
 PUBLIC_FIELDS = (
 	"full_name", "email", "phone", "plan", "company_name", "tax_id", "tax_regime",
-	"industry", "address", "city", "subdomain", "terms_accepted", "current_step", "status", "mz_domain",
+	"industry", "address", "city", "subdomain", "users", "terms_accepted", "current_step", "status", "mz_domain",
 )
 
 
