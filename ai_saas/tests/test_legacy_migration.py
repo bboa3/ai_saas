@@ -249,6 +249,52 @@ class TestLegacyMigration(FrappeTestCase):
 			                       lm.create_account, DIRECT_CUSTOMER, SITE2, None, None, None, 0, 6)
 		self.assertFalse(frappe.db.exists("Contract", {"party_name": DIRECT_CUSTOMER}))
 
+	def test_prepare_account_stops_at_the_draft_and_adopts_the_site(self):
+		"""The half-verb: every document except the one that bills. The contract must be
+		a draft with no Subscription, and the provisioning row must already point at the
+		existing site — that row is what makes the later submit adopt it instead of
+		building a second one."""
+		from frappe.utils import add_days, cint, nowdate
+
+		from ai_saas.tests.helpers import TEST_PLAN
+
+		queued = frappe.db.count("Email Queue")
+		start = add_days(nowdate(), 7)
+		with patch.object(lm, "_sites", return_value=self._live_sites(SITE2)), \
+		     patch.object(lm, "_probe_identity", return_value=_ident()):
+			out = lm.prepare_account(DIRECT_CUSTOMER, SITE2, TEST_PLAN, start, dry_run=0, users=6)
+
+		contract = frappe.get_doc("Contract", out["contract"])
+		self.assertEqual(contract.docstatus, 0)  # draft: the human submits it
+		self.assertEqual(cint(contract.is_signed), 1)
+		self.assertEqual(cint(contract.mz_users), 6)
+		self.assertFalse(contract.get("mz_linked_subscription"))
+		self.assertFalse(frappe.db.exists("Subscription", {"party": out["customer"]}))
+		prov = frappe.db.get_value("MZ Tenant Provisioning", out["provisioning"],
+		                           ["contract", "site_name", "status"], as_dict=True)
+		self.assertEqual((prov.contract, prov.site_name, prov.status), (contract.name, SITE2, "Active"))
+		self.assertTrue(out["opportunity"])
+		self.assertEqual(frappe.db.count("Email Queue"), queued)  # nothing provisions, nothing mails
+
+		# The submit the operator would click, with the REAL provision_tenant: the row it
+		# finds makes it return before validate_slug, so no site is built and no second
+		# row appears — that early return is exactly what adopting an existing site means.
+		rows = frappe.db.count("MZ Tenant Provisioning")
+		contract.submit()
+		self.assertEqual(frappe.db.count("MZ Tenant Provisioning"), rows)
+		self.assertEqual(frappe.db.get_value("MZ Tenant Provisioning", out["provisioning"], "status"), "Active")
+		sub = frappe.db.get_value("Contract", contract.name, "mz_linked_subscription")
+		self.assertTrue(sub)
+		self.assertEqual([row.qty for row in frappe.get_doc("Subscription", sub).plans], [5])
+
+	def test_prepare_account_reports_what_the_invoice_would_lack(self):
+		from ai_saas.tests.helpers import TEST_PLAN
+
+		with patch.object(lm, "_sites", return_value=self._live_sites(SITE2)), \
+		     patch.object(lm, "_probe_identity", return_value=_ident()):
+			out = lm.prepare_account(DIRECT_CUSTOMER, SITE2, TEST_PLAN, dry_run=0, users=6)
+		# The identity probe carries no address, so that gap is always reported.
+		self.assertTrue(any("Endereço" in g for g in out["gaps"]))
 	def test_create_account_without_plan_is_engine_silent_but_converted(self):
 		"""The holding/partner shape: no Subscription, no billing — but the ledger still
 		says what the account is (Activated/Converted), which on_contract_submitted alone

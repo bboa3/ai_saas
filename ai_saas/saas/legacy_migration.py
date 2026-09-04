@@ -710,25 +710,9 @@ def _seats_preview(plan, users) -> str:
 	return f"{seats} → {qty} x {frappe.utils.fmt_money(cost, currency=currency)} = {amount}/{period}"
 
 
-def create_account(customer_name, site, plan=None, start_date=None, email=None, dry_run: int = 1,
-                   users=None):
-	"""A direct account whose site already exists (a holding's own instance, a yearly
-	deal paid outside): register the provisioning row FIRST — so the submit hook's
-	provision_tenant no-ops — then create/reuse Customer and Contact and submit a
-	Contract already signed. With `plan`, the normal hook creates the Subscription
-	(billing starts at max(start_date, today) — never back-dated); without it, the
-	engine-silent CCM/partner shape. The delivery email is never sent (nothing provisions).
-
-	`users` = contracted seats, stamped on the Contract before insert so the submit
-	hook's _setup_subscription bills _billed_qty(users) = users-1 (the first user is
-	included). Omitted, the contract lands seat-less and bills one plan cost — the
-	pre-seats flat behaviour, which is what a plan-less holding/partner wants. The
-	dry run prints what the first invoice will say, seats included: check it there.
-	"""
-	from ai_saas.saas import crm
-	from ai_saas.saas.contract_lifecycle import _get_company
-
-	dry_run = cint(dry_run)
+def _validate_direct_account(customer_name, site, plan, users):
+	"""The gate both direct-account verbs share: the site must exist and be free, the
+	plan must be real, and seats must be billable."""
 	live = {s["site"] for s in _sites() if s["site_dir"] == "live"}
 	if site not in live:
 		frappe.throw(f"O site {site} não existe vivo neste bench.")
@@ -742,18 +726,51 @@ def create_account(customer_name, site, plan=None, start_date=None, email=None, 
 	if taken:
 		frappe.throw(f"O site {site} já pertence ao contrato {taken} — use activate().")
 
-	ident = _probe_identity(site)
-	responsible = (ident.get("people") or [{}])[0]
-	contact_email = email or responsible.get("email") or (ident.get("company") or {}).get("email")
-	if dry_run:
-		line = (f"[dry-run] {customer_name} @ {site}: customer "
-		        f"{'existe' if frappe.db.exists('Customer', {'customer_name': customer_name}) else 'a criar'}, "
-		        f"contacto {contact_email or '—'}, plano {plan or '— (sem subscrição)'}, início {start_date or nowdate()}"
-		        f", {_seats_preview(plan, users)}")
-		print(line)
-		return line
 
+def _invoice_gaps(customer) -> list[str]:
+	"""What the Customer record still lacks for a correct fiscal invoice. All three are
+	read FROM the Customer - contact_email is fetched into the Contract at insert time -
+	so they are worth filling before the contract exists, never after."""
+	row = frappe.db.get_value(
+		"Customer", customer,
+		["tax_id", "email_id", "customer_primary_address"], as_dict=True,
+	) or frappe._dict()
+	gaps = []
+	if not row.get("tax_id"):
+		gaps.append("NUIT em falta — a factura sai sem o NUIT do cliente.")
+	if not row.get("email_id"):
+		gaps.append("Email em falta — Contrato.contact_email fica vazio e os avisos de facturação não saem.")
+	if not row.get("customer_primary_address"):
+		gaps.append("Endereço de facturação em falta — a factura sai sem morada.")
+	return gaps
+
+
+def _dry_run_line(customer_name, site, plan, start_date, users, contact_email) -> str:
+	exists = frappe.db.exists("Customer", {"customer_name": customer_name})
+	return (
+		f"[dry-run] {customer_name} @ {site}: customer {'existe' if exists else 'a criar'}"
+		f", contacto {contact_email or '-'}"
+		f", plano {plan or '— (sem subscrição)'}"
+		f", início {start_date or nowdate()}"
+		f", {_seats_preview(plan, users)}"
+	)
+
+
+def _prepare_documents(customer_name, site, plan, start_date, users, ident, contact_email):
+	"""Customer, Contact, the draft Contract, the provisioning row and the Opportunity -
+	everything a direct account needs before the submit, and nothing that bills.
+
+	The provisioning row is inserted while the contract is still a draft on purpose: at
+	submit, provision_tenant finds it and returns before validate_slug, so an existing
+	tenant site is adopted rather than rebuilt - and a reserved slug like `erp`
+	(erp.kalenyholding.com) never reaches the check that would refuse it.
+	"""
+	from ai_saas.saas import crm
+	from ai_saas.saas.contract_lifecycle import _get_company
+
+	responsible = (ident.get("people") or [{}])[0]
 	customer = frappe.db.get_value("Customer", {"customer_name": customer_name}, "name")
+	created_customer = not customer
 	if not customer:
 		customer = frappe.get_doc({
 			"doctype": "Customer", "customer_name": customer_name, "customer_type": "Company",
@@ -763,6 +780,8 @@ def create_account(customer_name, site, plan=None, start_date=None, email=None, 
 			or frappe.db.get_value("Territory", {"is_group": 0}, "name"),
 			"tax_id": _norm_nuit((ident.get("company") or {}).get("tax_id")) or None,
 		}).insert(ignore_permissions=True).name
+
+	contact = None
 	if contact_email and not frappe.db.get_value("Customer", customer, "customer_primary_contact"):
 		from ai_saas.saas.party import set_customer_primaries
 
@@ -773,9 +792,9 @@ def create_account(customer_name, site, plan=None, start_date=None, email=None, 
 			"phone_nos": [{"phone": responsible.get("mobile_no"), "is_primary_mobile_no": 1}]
 			if responsible.get("mobile_no") else [],
 			"links": [{"link_doctype": "Customer", "link_name": customer}],
-		}).insert(ignore_permissions=True)
-		set_customer_primaries(customer, contact=contact.name, email=contact_email,
-		                       mobile=responsible.get("mobile_no"))
+		}).insert(ignore_permissions=True).name
+		set_customer_primaries(customer, contact=contact, email=contact_email,
+							   mobile=responsible.get("mobile_no"))
 
 	contract = frappe.get_doc({
 		"doctype": "Contract", "party_type": "Customer", "party_name": customer,
@@ -785,25 +804,107 @@ def create_account(customer_name, site, plan=None, start_date=None, email=None, 
 		"contract_terms": "Contrato de venda directa — negociado e assinado fora do sistema.",
 	})
 	contract.insert(ignore_permissions=True)
-	_register_provisioning(contract, site)
-	if not crm.find_opportunity(contract.name):
-		frappe.get_doc({
+	provisioning = _register_provisioning(contract, site)
+
+	opportunity = crm.find_opportunity(contract.name)
+	if not opportunity:
+		opportunity = frappe.get_doc({
 			"doctype": "Opportunity", "opportunity_from": "Customer", "party_name": customer,
 			"company": _get_company(), "transaction_date": nowdate(),
 			"sales_stage": crm.STAGE_ACCOUNT_CREATED,
-		}).insert(ignore_permissions=True)
+		}).insert(ignore_permissions=True).name
+
+	return frappe._dict(customer=customer, created_customer=created_customer, contact=contact,
+						contract=contract, provisioning=provisioning, opportunity=opportunity)
+
+
+def prepare_account(customer_name, site, plan=None, start_date=None, email=None, dry_run: int = 1,
+					users=None):
+	"""A direct account up to - but not including - the submit.
+
+	Same documents as create_account, stopping before the step that bills: the Contract
+	is left as a DRAFT for a human to read and submit in the desk. That submit (on a
+	contract already ticked Assinado) is what creates the Subscription and closes the
+	Opportunity as Converted; leaving it unticked defers both to the moment it is ticked.
+
+	Nothing here provisions and nothing mails: the provisioning row registered against
+	the draft adopts the site that already exists.
+	"""
+	dry_run = cint(dry_run)
+	_validate_direct_account(customer_name, site, plan, users)
+
+	ident = _probe_identity(site)
+	responsible = (ident.get("people") or [{}])[0]
+	contact_email = email or responsible.get("email") or (ident.get("company") or {}).get("email")
+	if dry_run:
+		line = _dry_run_line(customer_name, site, plan, start_date, users, contact_email)
+		print(line)
+		return line
+
+	made = _prepare_documents(customer_name, site, plan, start_date, users, ident, contact_email)
+	frappe.db.commit()
+
+	lines = [
+		f"{customer_name} @ {site}",
+		f"  Customer:        {made.customer} ({'criado' if made.created_customer else 'existente'})",
+		f"  Contacto:        {made.contact or '— (o customer já tinha contacto principal)'}",
+		f"  Contrato:        {made.contract.name}  RASCUNHO — assinado, "
+		f"{cint(users) or '-'} utilizadores, início {start_date or nowdate()}",
+		f"  Provisionamento: {made.provisioning}  {site}  (Active — o site existente fica adoptado)",
+		f"  Oportunidade:    {made.opportunity}",
+		f"  Facturação:      {_seats_preview(plan, users)}",
+	]
+	gaps = _invoice_gaps(made.customer)
+	if gaps:
+		lines.append("  A CORRIGIR NO CUSTOMER ANTES DE SUBMETER:")
+		lines.extend(f"    - {g}" for g in gaps)
+	lines.append(f"  Próximo passo: abrir {made.contract.name} e Submeter — é o submit que cria a "
+				 f"Subscrição e fecha a Oportunidade como Converted.")
+	digest = "\n".join(lines)
+	print(digest)
+	return {"customer": made.customer, "contract": made.contract.name,
+			"provisioning": made.provisioning, "opportunity": made.opportunity, "gaps": gaps}
+
+
+def create_account(customer_name, site, plan=None, start_date=None, email=None, dry_run: int = 1,
+				   users=None):
+	"""A direct account whose site already exists (a holding's own instance, a yearly
+	deal paid outside), end to end: prepare_account's documents plus the submit. With
+	`plan`, the submit hook creates the Subscription (billing starts at max(start_date,
+	today) - never back-dated); without it, the engine-silent CCM/partner shape. The
+	delivery email is never sent (nothing provisions).
+
+	`users` = contracted seats, stamped on the Contract before insert so the hook bills
+	_billed_qty(users) = users-1 (the first user is included). Omitted, the contract
+	lands seat-less and bills one plan cost - the pre-seats flat behaviour, which is what
+	a plan-less holding/partner wants. Use prepare_account when the contract should be
+	read by a human before it bills.
+	"""
+	dry_run = cint(dry_run)
+	_validate_direct_account(customer_name, site, plan, users)
+
+	ident = _probe_identity(site)
+	responsible = (ident.get("people") or [{}])[0]
+	contact_email = email or responsible.get("email") or (ident.get("company") or {}).get("email")
+	if dry_run:
+		line = _dry_run_line(customer_name, site, plan, start_date, users, contact_email)
+		print(line)
+		return line
+
+	made = _prepare_documents(customer_name, site, plan, start_date, users, ident, contact_email)
+	contract = made.contract
 	contract.submit()
 	if not plan:
 		# on_contract_submitted returns before the ledger and the group move when there is
-		# no plan (nothing to bill, nothing to provision) — a plan-less direct account
+		# no plan (nothing to bill, nothing to provision) - a plan-less direct account
 		# (holding/partner) is still a converted customer, so record it here.
 		from ai_saas.saas.contract_lifecycle import _move_customer_to_commercial_group
 
-		_move_customer_to_commercial_group(frappe._dict(party_name=customer))
-		_report_activated(customer, contract.name)
+		_move_customer_to_commercial_group(frappe._dict(party_name=made.customer))
+		_report_activated(made.customer, contract.name)
 	frappe.db.commit()
-	result = {"customer": customer, "contract": contract.name,
-	          "subscription": frappe.db.get_value("Contract", contract.name, "mz_linked_subscription")}
+	result = {"customer": made.customer, "contract": contract.name,
+			  "subscription": frappe.db.get_value("Contract", contract.name, "mz_linked_subscription")}
 	print(result)
 	return result
 
