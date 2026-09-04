@@ -218,6 +218,37 @@ class TestLegacyMigration(FrappeTestCase):
 		opp = frappe.db.get_value("Opportunity", {"party_name": result["customer"]}, ["sales_stage", "status"], as_dict=True)
 		self.assertEqual((opp.sales_stage, opp.status), ("Cloud - Activated", "Converted"))
 
+	def test_create_account_bills_the_contracted_seats(self):
+		"""A direct account sold with N seats bills N-1 plan costs from day one — the
+		seats must reach the Subscription through the submit hook, not a later edit."""
+		from frappe.utils import cint
+
+		from ai_saas.tests.helpers import TEST_PLAN
+
+		# Future start date: billing from today would issue the first invoice here (E2),
+		# and a submitted invoice is not something a test should leave behind.
+		start = add_days(nowdate(), 7)
+		with patch.object(lm, "_sites", return_value=self._live_sites(SITE2)), \
+		     patch.object(lm, "_probe_identity", return_value=_ident()):
+			line = lm.create_account(DIRECT_CUSTOMER, SITE2, TEST_PLAN, start, dry_run=1, users=6)
+			self.assertIn("6 utilizadores → 5 x", line)  # the money is visible before the write
+			result = lm.create_account(DIRECT_CUSTOMER, SITE2, TEST_PLAN, start, dry_run=0, users=6)
+
+		self.assertEqual(cint(frappe.db.get_value("Contract", result["contract"], "mz_users")), 6)
+		sub = frappe.get_doc("Subscription", result["subscription"])
+		self.assertEqual([row.qty for row in sub.plans], [5])
+
+	def test_create_account_refuses_seats_it_cannot_bill(self):
+		from ai_saas.tests.helpers import TEST_PLAN
+
+		with patch.object(lm, "_sites", return_value=self._live_sites(SITE2)), \
+		     patch.object(lm, "_probe_identity", return_value=_ident()):
+			self.assertRaisesRegex(frappe.ValidationError, "pelo menos 1 utilizador",
+			                       lm.create_account, DIRECT_CUSTOMER, SITE2, TEST_PLAN, None, None, 0, 0)
+			self.assertRaisesRegex(frappe.ValidationError, "sem plano",
+			                       lm.create_account, DIRECT_CUSTOMER, SITE2, None, None, None, 0, 6)
+		self.assertFalse(frappe.db.exists("Contract", {"party_name": DIRECT_CUSTOMER}))
+
 	def test_create_account_without_plan_is_engine_silent_but_converted(self):
 		"""The holding/partner shape: no Subscription, no billing — but the ledger still
 		says what the account is (Activated/Converted), which on_contract_submitted alone

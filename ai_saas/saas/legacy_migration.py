@@ -692,13 +692,38 @@ def activate(contracts, dry_run: int = 1):
 	return lines
 
 
-def create_account(customer_name, site, plan=None, start_date=None, email=None, dry_run: int = 1):
+def _seats_preview(plan, users) -> str:
+	"""What the first invoice will say, spelled out in the dry run: seats, the billed
+	units after the included first user, and the amount. A direct account is priced by
+	hand — the number has to be readable before the contract exists, not after."""
+	from ai_saas.saas.contract_lifecycle import _billed_qty
+
+	if not plan:
+		return "sem facturação"
+	qty = _billed_qty(users)
+	cost, currency, interval = frappe.db.get_value(
+		"Subscription Plan", plan, ["cost", "currency", "billing_interval"]
+	)
+	period = {"Month": "mês", "Year": "ano"}.get(interval, str(interval).lower())
+	seats = f"{cint(users)} utilizadores" if users else "utilizadores por indicar (factura 1)"
+	amount = frappe.utils.fmt_money(flt(cost) * qty, currency=currency)
+	return f"{seats} → {qty} x {frappe.utils.fmt_money(cost, currency=currency)} = {amount}/{period}"
+
+
+def create_account(customer_name, site, plan=None, start_date=None, email=None, dry_run: int = 1,
+                   users=None):
 	"""A direct account whose site already exists (a holding's own instance, a yearly
 	deal paid outside): register the provisioning row FIRST — so the submit hook's
 	provision_tenant no-ops — then create/reuse Customer and Contact and submit a
 	Contract already signed. With `plan`, the normal hook creates the Subscription
 	(billing starts at max(start_date, today) — never back-dated); without it, the
 	engine-silent CCM/partner shape. The delivery email is never sent (nothing provisions).
+
+	`users` = contracted seats, stamped on the Contract before insert so the submit
+	hook's _setup_subscription bills _billed_qty(users) = users-1 (the first user is
+	included). Omitted, the contract lands seat-less and bills one plan cost — the
+	pre-seats flat behaviour, which is what a plan-less holding/partner wants. The
+	dry run prints what the first invoice will say, seats included: check it there.
 	"""
 	from ai_saas.saas import crm
 	from ai_saas.saas.contract_lifecycle import _get_company
@@ -709,6 +734,10 @@ def create_account(customer_name, site, plan=None, start_date=None, email=None, 
 		frappe.throw(f"O site {site} não existe vivo neste bench.")
 	if plan and not frappe.db.exists("Subscription Plan", plan):
 		frappe.throw(f"Plano desconhecido: {plan}")
+	if users is not None and cint(users) < 1:
+		frappe.throw("Indique pelo menos 1 utilizador — a subscrição factura por utilizador.")
+	if users is not None and not plan:
+		frappe.throw("Utilizadores sem plano não facturam nada — indique o plano ou omita os utilizadores.")
 	taken = frappe.db.get_value("MZ Tenant Provisioning", {"site_name": site}, "contract")
 	if taken:
 		frappe.throw(f"O site {site} já pertence ao contrato {taken} — use activate().")
@@ -719,7 +748,8 @@ def create_account(customer_name, site, plan=None, start_date=None, email=None, 
 	if dry_run:
 		line = (f"[dry-run] {customer_name} @ {site}: customer "
 		        f"{'existe' if frappe.db.exists('Customer', {'customer_name': customer_name}) else 'a criar'}, "
-		        f"contacto {contact_email or '—'}, plano {plan or '— (sem subscrição)'}, início {start_date or nowdate()}")
+		        f"contacto {contact_email or '—'}, plano {plan or '— (sem subscrição)'}, início {start_date or nowdate()}"
+		        f", {_seats_preview(plan, users)}")
 		print(line)
 		return line
 
@@ -751,7 +781,7 @@ def create_account(customer_name, site, plan=None, start_date=None, email=None, 
 		"doctype": "Contract", "party_type": "Customer", "party_name": customer,
 		"start_date": start_date or nowdate(), "is_signed": 1, "signed_on": frappe.utils.now_datetime(),
 		"mz_direct": 1, "mz_subscription_plan": plan, "mz_tenant": site.split(".")[0],
-		"mz_tenant_url": site,
+		"mz_tenant_url": site, "mz_users": cint(users) or None,
 		"contract_terms": "Contrato de venda directa — negociado e assinado fora do sistema.",
 	})
 	contract.insert(ignore_permissions=True)
