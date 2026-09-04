@@ -568,3 +568,83 @@ class TestSignup(FrappeTestCase):
 		st = signup._status(token)
 		self.assertEqual(st["state"], "complete")
 		self.assertIn(SLUG, st["site_url"])
+
+
+class TestSlugAI(FrappeTestCase):
+	"""slug_ai: the AI front-end of _suggest_subdomain. The network seam (_complete)
+	is always patched — these tests never call the Anthropic API."""
+
+	def setUp(self):
+		frappe.cache().delete_keys("slug_ai")
+		frappe.flags.slug_ai_test = True  # re-enable the AI path in tests; _complete stays patched
+
+	def tearDown(self):
+		frappe.flags.slug_ai_test = False
+		frappe.cache().delete_keys("slug_ai")
+
+	@staticmethod
+	def _with_key(value="sk-ant-test"):
+		return patch.dict(frappe.conf, {"anthropic_api_key": value})
+
+	def test_candidates_validated_and_first_free_wins(self):
+		# "ADMIN" is reserved (after lowercasing), "x" fails the regex; the first valid,
+		# available candidate wins over the deterministic slug.
+		raw = '["ADMIN", "x", "slugai-boa-construtora", "slugai-farmacia"]'
+		with self._with_key(), patch("ai_saas.saas.slug_ai._complete", return_value=raw):
+			out = signup._suggest_subdomain("Boa Construtora Slug AI, SA")
+		self.assertEqual(out, {"subdomain": "slugai-boa-construtora"})
+
+	def test_ai_failure_falls_back_deterministic(self):
+		with self._with_key(), patch("ai_saas.saas.slug_ai._complete", side_effect=Exception("timeout")):
+			out = signup._suggest_subdomain("Empresa Slugai Fallback Teste")
+		self.assertEqual(out, {"subdomain": "slugai-fallback-teste"})
+
+	def test_no_key_never_calls_ai(self):
+		from ai_saas.saas.slug_ai import ai_slug_candidates
+		with self._with_key(""), patch("ai_saas.saas.slug_ai._complete") as complete:
+			self.assertEqual(ai_slug_candidates("Farmácia Central, Lda"), [])
+			out = signup._suggest_subdomain("Empresa Slugai Semchave Teste")
+		complete.assert_not_called()
+		self.assertEqual(out, {"subdomain": "slugai-semchave-teste"})
+
+	def test_garbage_output_falls_back(self):
+		with self._with_key(), patch("ai_saas.saas.slug_ai._complete", return_value="claro! aqui vão: minha-empresa"):
+			self.assertEqual(signup._suggest_subdomain("Empresa Slugai Lixo Um"), {"subdomain": "slugai-lixo-um"})
+		with self._with_key(), patch("ai_saas.saas.slug_ai._complete", return_value='{"a": 1}'):
+			self.assertEqual(signup._suggest_subdomain("Empresa Slugai Lixo Dois"), {"subdomain": "slugai-lixo-dois"})
+
+	def test_result_cached(self):
+		from ai_saas.saas.slug_ai import ai_slug_candidates
+		with self._with_key(), patch(
+			"ai_saas.saas.slug_ai._complete", return_value='["slugai-cache-teste"]'
+		) as complete:
+			first = ai_slug_candidates("Empresa Slugai Cache, Lda")
+			second = ai_slug_candidates("Empresa  Slugai   Cache, Lda")  # whitespace-insensitive key
+		self.assertEqual(first, ["slugai-cache-teste"])
+		self.assertEqual(second, ["slugai-cache-teste"])
+		self.assertEqual(complete.call_count, 1)
+
+	def test_city_reaches_the_model_and_the_cache_key(self):
+		from ai_saas.saas.slug_ai import ai_slug_candidates
+		with self._with_key(), patch(
+			"ai_saas.saas.slug_ai._complete", return_value='["slugai-cidade-teste"]'
+		) as complete:
+			ai_slug_candidates("Empresa Slugai Cidade, Lda", city="Matola")
+			ai_slug_candidates("Empresa Slugai Cidade, Lda")  # no city: must not share the cache entry
+		self.assertEqual(complete.call_count, 2)
+		self.assertEqual(complete.call_args_list[0].args, ("Empresa Slugai Cidade, Lda", "Matola"))
+		self.assertEqual(complete.call_args_list[1].args, ("Empresa Slugai Cidade, Lda", None))
+
+	def test_endpoint_looks_up_city_by_token(self):
+		doc = frappe.get_doc({
+			"doctype": "MZ Signup", "status": "Started", "full_name": "Slug AI City",
+			"email": "slugai-city@example.com", "city": "Matola",
+		}).insert(ignore_permissions=True)
+		try:
+			with patch("ai_saas.api.signup._suggest_subdomain", return_value={"subdomain": "x"}) as core:
+				signup.suggest_subdomain("Empresa Slugai Endpoint", token=doc.resume_token)
+				core.assert_called_once_with("Empresa Slugai Endpoint", city="Matola")
+				signup.suggest_subdomain("Empresa Slugai Endpoint", token="no-such-token")
+				self.assertIsNone(core.call_args.kwargs["city"])
+		finally:
+			frappe.delete_doc("MZ Signup", doc.name, force=True, ignore_permissions=True)

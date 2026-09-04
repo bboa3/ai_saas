@@ -9,6 +9,8 @@ readme = "README.md"
 dynamic = ["version"]
 dependencies = [
     # "frappe~=15.0.0" # Installed and managed by bench.
+    "anthropic~=1.0", # AI subdomain suggestions on /registo (saas/slug_ai.py)
+    "Brotli>=1.2", # httpx2 (anthropic's HTTP layer) needs process(output_buffer_limit=...); bench ships 1.1
 ]
 
 [build-system]

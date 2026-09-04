@@ -95,8 +95,15 @@ def slug_from_company(company_name: str, max_words: int = 3) -> str:
 		slug = "-".join(words)[:40].strip("-")
 	return slug
 
-def _suggest_subdomain(company_name):
-	"""The first free variant of the company's natural slug: name, name-2, name-3…"""
+def _suggest_subdomain(company_name, city=None):
+	"""The best free slug for the company: AI candidates first (already validated by
+	slug_ai — [] on any problem; the city feeds the collision-distinguisher variant),
+	then the first free variant of the deterministic slug: name, name-2, name-3…"""
+	from ai_saas.saas.slug_ai import ai_slug_candidates
+
+	for candidate in ai_slug_candidates(company_name, city=city):
+		if _check_subdomain(candidate)["available"]:
+			return {"subdomain": candidate}
 	base = slug_from_company(company_name)
 	if len(base) < 3:
 		return {"subdomain": ""}

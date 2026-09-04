@@ -97,16 +97,8 @@
 
   <!-- Step 3 · Account -->
   <section class="reg__step" data-step="3" hidden>
-    <h1 tabindex="-1">Plano e endereço</h1>
+    <h1 tabindex="-1">O seu plano</h1>
     <p class="reg__lead">Só paga depois de activar — nunca antes do fim do período experimental.</p>
-    <label for="subdomain">Subdomínio da sua conta</label>
-    <div class="reg__subdomain">
-      <input id="subdomain" name="subdomain" type="text" inputmode="url" autocapitalize="none" spellcheck="false" placeholder="sua-empresa">
-      <span class="reg__suffix">{{ domain }}</span>
-    </div>
-    <div class="reg__err" role="alert" aria-live="polite" data-for="subdomain"></div>
-    <div class="reg__domain" id="reg-domain-preview" aria-live="polite">Vai entrar em <span id="reg-domain-url">https://sua-empresa{{ domain }}</span></div>
-    <div class="reg__ok" id="reg-subdomain-ok" hidden>Disponível ✓</div>
         <label for="users">Utilizadores</label>
         <input id="users" name="users" type="number" inputmode="numeric" min="{{ minimum_users }}" step="1"
           value="{{ minimum_users }}">
@@ -126,6 +118,24 @@
           {% endfor %}
         </div>
         <div class="reg__domain" id="reg-plan-total" aria-live="polite"></div>
+    <!-- The subdomain is chosen automatically and shown as a miniature browser address
+         bar — a confirmation, not a decision. The field only appears via "alterar" (or
+         when something needs the visitor's attention — no suggestion, slug taken). -->
+    <span class="reg__addr-label" id="reg-addr-label">Endereço da sua conta</span>
+    <div class="reg__addressbar" id="reg-addressbar" role="status" aria-labelledby="reg-addr-label">
+      <svg class="reg__addr-lock" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Zm3 4a1.5 1.5 0 0 1 .75 2.8V18a.75.75 0 0 1-1.5 0v-1.2A1.5 1.5 0 0 1 12 14Z"/></svg>
+      <span class="reg__addr-url"><span id="reg-addr-slug">sua-empresa</span><span class="reg__addr-suffix">{{ domain }}</span></span>
+      <span class="reg__addr-state" id="reg-addr-state" data-state="idle"><span class="reg__sr" id="reg-addr-state-text"></span></span>
+      <button type="button" class="reg__link" id="reg-subdomain-change">alterar</button>
+    </div>
+    <div id="subdomain-row" hidden>
+      <label for="subdomain">Subdomínio da sua conta</label>
+      <div class="reg__subdomain">
+        <input id="subdomain" name="subdomain" type="text" inputmode="url" autocapitalize="none" spellcheck="false" placeholder="sua-empresa">
+        <span class="reg__suffix">{{ domain }}</span>
+      </div>
+      <div class="reg__err" role="alert" aria-live="polite" data-for="subdomain"></div>
+    </div>
     <label class="reg__check"><input type="checkbox" id="terms_accepted"> Li e aceito os <a href="/termos" target="_blank" rel="noopener">termos de serviço</a> e a <a href="https://mozeconomia.co.mz/politica-de-privacidade" target="_blank" rel="noopener">política de privacidade</a>.</label>
     <div class="reg__err" role="alert" aria-live="polite" data-for="terms_accepted"></div>
     <div class="reg__row">

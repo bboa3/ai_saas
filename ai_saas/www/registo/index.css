@@ -131,11 +131,126 @@ main.page_content {
   margin-top: 12px;
 }
 
-.reg__ok {
-  color: #1f8f5f;
-  font-size: 13px;
-  margin-top: 6px;
+/* The account address as a miniature browser bar: padlock, bold slug in the brand
+   color, muted suffix, availability state where a browser puts its icons. The pill
+   border echoes the plan pill; the full radius rhymes with the CTA. */
+.reg__addr-label {
+  display: block;
   font-weight: 700;
+  font-size: 13px;
+  margin: 14px 0 6px;
+}
+
+.reg__addressbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid var(--reg-accent);
+  border-radius: 999px;
+  padding: 11px 16px;
+  transition: border-color .15s ease;
+}
+
+.reg__addressbar.is-bad {
+  border-color: #b42318;
+}
+
+.reg__addr-lock {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: #5a6270;
+}
+
+.reg__addr-url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+/* Same restraint as the plan pill: the address reads as a fact, not a heading —
+   the accent color alone marks the slug, no bold. */
+#reg-addr-slug {
+  font-weight: 400;
+  color: var(--reg-accent);
+}
+
+.reg__addressbar.is-empty #reg-addr-slug {
+  color: #9aa2ae;
+}
+
+.reg__addr-suffix {
+  font-size: 13px;
+  color: #5a6270;
+}
+
+.reg__addr-state {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  position: relative;
+}
+
+.reg__addr-state[data-state="ok"]::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 5px;
+  height: 10px;
+  border: solid var(--reg-accent);
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+}
+
+.reg__addr-state[data-state="bad"]::before {
+  content: "✕";
+  position: absolute;
+  inset: 0;
+  color: #b42318;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.reg__addr-state[data-state="checking"]::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border: 2px solid var(--reg-accent-tint);
+  border-top-color: var(--reg-accent);
+  border-radius: 50%;
+  animation: reg-spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reg__addr-state[data-state="checking"]::before {
+    content: "…";
+    border: 0;
+    animation: none;
+    color: #5a6270;
+    font-weight: 700;
+    line-height: 12px;
+    text-align: center;
+  }
+}
+
+.reg__addressbar .reg__link {
+  flex: none;
+}
+
+.reg__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .reg__btn {
@@ -367,7 +482,6 @@ main.page_content {
 .reg--kaleny .reg__partner { display: none; }
 .reg--kaleny .reg__btn:not(.reg__btn--ghost) { background: #1D3D75; color: #fff; }
 .reg--kaleny .reg__btn:not(.reg__btn--ghost):hover { background: #16305D; }
-.reg--kaleny .reg__ok { color: #1D3D75; }
 
 /* Partner theme — Curati: full logo, Curati green instead of MozEconomia's */
 .reg--curati { --reg-accent: #0B3D2E; --reg-accent-tint: #E3F5EC; }
@@ -375,4 +489,3 @@ main.page_content {
 .reg--curati .reg__partner { display: none; }
 .reg--curati .reg__btn:not(.reg__btn--ghost) { background: #0B3D2E; color: #fff; }
 .reg--curati .reg__btn:not(.reg__btn--ghost):hover { background: #082A20; }
-.reg--curati .reg__ok { color: #0B3D2E; }

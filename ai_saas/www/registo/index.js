@@ -108,32 +108,97 @@
     var c = $("#reg-plan-choices"); c.hidden = true; $("#reg-plan-change").setAttribute("aria-expanded", "false"); $("#reg-plan-change").textContent = "alterar";
   }); });
   function fillSummary() {
-    if (!val("subdomain") && val("company_name")) {
-      api("suggest_subdomain", { company_name: val("company_name") }).then(function (r) {
-        if (r.subdomain && !val("subdomain")) { $("#subdomain").value = r.subdomain; previewDomain(); checkSubdomain(); }
-      }).catch(function () {});
+    // The subdomain is automatic: the field stays hidden behind "Vai entrar em …" and the
+    // discreet "alterar" button. A value the visitor typed or opened this session is theirs
+    // — never overwritten. A restored value they never touched gets normalized, and replaced
+    // by a fresh suggestion only if still invalid. Whenever the automation cannot deliver
+    // (no company name, no suggestion, request failed), the field reveals itself.
+    var current = val("subdomain");
+    if (current && !subdomainTouched && rules.subdomain(current)) {
+      var norm = normalizeSlug(current);
+      if (norm !== current) { $("#subdomain").value = norm; current = norm; }
+    }
+    // Re-suggest when: empty, invalid, or THIS session's auto value was made for a company
+    // name that has since been edited (subdomainFor). A value restored from a previous
+    // session (subdomainFor === null) is kept — it may have been the visitor's own choice.
+    var staleAuto = subdomainFor !== null && subdomainFor !== val("company_name");
+    if (!subdomainTouched && val("company_name") && (!current || rules.subdomain(val("subdomain")) || staleAuto)) {
+      var forName = val("company_name");
+      api("suggest_subdomain", { company_name: forName, token: token }).then(function (r) {
+        if (subdomainTouched) return;
+        if (r.subdomain) { subdomainFor = forName; $("#subdomain").value = r.subdomain; previewDomain(); checkSubdomain(); }
+        else if (!val("subdomain")) revealSubdomain(false);
+      }).catch(function () { if (!val("subdomain")) revealSubdomain(false); });
+    } else if (!current && !val("company_name")) {
+      revealSubdomain(false);
+    } else if (current) {
+      checkSubdomain(); // reassurance badge (and reveal-on-taken) for a kept value
     }
     previewDomain();
   }
   // ---- subdomain availability ---------------------------------------------
+  // The address bar mirrors the field (or shows the placeholder until a suggestion
+  // lands); its state icon is where a browser puts its own — ✓ free, ✕ taken, spinner
+  // while the server is asked.
+  var ADDR_STATE_TEXT = { idle: "", checking: "A verificar disponibilidade", ok: "Disponível", bad: "Indisponível" };
   function previewDomain() {
-    var slug = val("subdomain") || "a-sua-empresa";
-    $("#reg-domain-url").textContent = "https://" + slug + (cfg.domain || ".erp.mozeconomia.co.mz");
+    var slug = val("subdomain");
+    $("#reg-addr-slug").textContent = slug || "sua-empresa";
+    $("#reg-addressbar").classList.toggle("is-empty", !slug);
+  }
+  function setAddrState(state) {
+    $("#reg-addr-state").dataset.state = state;
+    $("#reg-addr-state-text").textContent = ADDR_STATE_TEXT[state] || "";
+    $("#reg-addressbar").classList.toggle("is-bad", state === "bad");
   }
   var subTimer = null;
+  // The field is hidden while the automation is doing fine; anything that needs the
+  // visitor's eyes (an error, a taken slug, no suggestion) reveals it.
+  function revealSubdomain(focus) {
+    var row = $("#subdomain-row");
+    if (row.hidden) { row.hidden = false; $("#reg-subdomain-change").hidden = true; }
+    if (focus) $("#subdomain").focus();
+  }
+  $("#reg-subdomain-change").addEventListener("click", function () {
+    subdomainTouched = true; // opened on purpose: the automation stops overwriting
+    revealSubdomain(true);
+  });
   function checkSubdomain() {
     previewDomain();
-    var slug = val("subdomain"); $("#reg-subdomain-ok").hidden = true;
-    if (!validate("subdomain")) return;
+    var slug = val("subdomain");
+    if (!validate("subdomain")) { setAddrState("bad"); revealSubdomain(false); return; }
+    setAddrState("checking");
     clearTimeout(subTimer);
     subTimer = setTimeout(function () {
       api("check_subdomain", { subdomain: slug }).then(function (r) {
         if (val("subdomain") !== slug) return;
-        if (r.available) { showError("subdomain", ""); $("#reg-subdomain-ok").hidden = false; } else { showError("subdomain", r.reason); }
-      });
+        if (r.available) { showError("subdomain", ""); setAddrState("ok"); } else { showError("subdomain", r.reason); setAddrState("bad"); revealSubdomain(false); }
+      }).catch(function () { if (val("subdomain") === slug) setAddrState("idle"); });
     }, 350);
   }
-  $("#subdomain").addEventListener("input", checkSubdomain);
+  // What the visitor types becomes a slug as they type it: "Minha Empresa" turns into
+  // "minha-empresa" instead of a validation error. Edge hyphens are left alone while
+  // typing ("minha-" is a word in progress); the validator still catches them at the end.
+  function normalizeSlug(v) {
+    return v.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[\s_]+/g, "-")
+      .replace(/[^a-z0-9-]/g, "")
+      .replace(/-{2,}/g, "-");
+  }
+  var subdomainTouched = false;
+  var subdomainFor = null; // company name this session's auto-suggestion was made for
+  $("#subdomain").addEventListener("input", function () {
+    subdomainTouched = true;
+    var input = this, raw = input.value, pos = input.selectionStart;
+    var norm = normalizeSlug(raw);
+    if (norm !== raw) {
+      var caret = normalizeSlug(raw.slice(0, pos)).length;
+      input.value = norm;
+      input.setSelectionRange(caret, caret);
+    }
+    checkSubdomain();
+  });
 
   // ---- navigation ---------------------------------------------------------
   $$("[data-back]").forEach(function (b) { b.addEventListener("click", function () { show(parseInt(b.dataset.back, 10) - 1); }); });
@@ -171,7 +236,8 @@
   });
   $("#reg-submit").addEventListener("click", function () {
     var btn = this; var g = $("#reg-global-err"); g.classList.remove("show");
-    if (!validate("subdomain") || !validate("users") || !validate("terms_accepted")) return;
+    if (!validate("subdomain")) { revealSubdomain(true); return; }
+    if (!validate("users") || !validate("terms_accepted")) return;
     var label = btn.textContent; btn.disabled = true;
     // Creating the account is two calls and half a dozen documents — seconds, not
     // milliseconds. The waiting belongs on the progress screen, not on a dead button:

@@ -83,9 +83,12 @@ def update(token, step, data):
 
 
 @frappe.whitelist(allow_guest=True)
-def suggest_subdomain(company_name):
+def suggest_subdomain(company_name, token=None):
 	_limit(limit=60, seconds=60)
-	return _suggest_subdomain(company_name)
+	# The browser rarely knows the city (derived server-side from the step-2 address);
+	# the signup record does. An unknown token just means no city variant.
+	city = frappe.db.get_value("MZ Signup", {"resume_token": token}, "city") if token else None
+	return _suggest_subdomain(company_name, city=city)
 
 
 @frappe.whitelist(allow_guest=True)
