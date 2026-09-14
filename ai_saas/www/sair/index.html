@@ -1,0 +1,55 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block head_include %}
+<link rel="stylesheet" href="/registo/index.css?v={{ asset_version or 0 }}">
+<meta name="robots" content="noindex">
+{% endblock %}
+
+{% block page_content %}
+<div class="reg">
+  <img class="reg__logo" src="/assets/erpnext_mz/images/logo.svg" alt="MozEconomia Cloud">
+
+  {% if not valid %}
+    <h1>Ligação inválida</h1>
+    <p class="reg__lead">Esta ligação não é válida. Utilize a ligação do email mais recente,
+      ou escreva-nos: <a href="mailto:cloud@mozeconomia.co.mz">cloud@mozeconomia.co.mz</a>.</p>
+  {% else %}
+    <div id="unsub-form" {% if already %}hidden{% endif %}>
+      <h1>Deixar de receber</h1>
+      <p class="reg__lead">Deixa de receber o Alerta Fiscal, os guias e qualquer outro email informativo da MozEconomia Cloud. Facturas e avisos de uma conta activa não são afectados.</p>
+      <button class="reg__btn" id="btn-unsub">Confirmar — não quero receber mais</button>
+      <p class="reg__err reg__err--global" id="unsub-error" hidden></p>
+    </div>
+    <div class="reg__done" id="unsub-done" {% if not already %}hidden{% endif %}>
+      <h1>Está feito</h1>
+      <p class="reg__lead">Não volta a receber emails informativos nossos. Se mudar de ideias, subscreva de novo em <a href="/alerta-fiscal">/alerta-fiscal</a>.</p>
+    </div>
+  {% endif %}
+
+  <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
+</div>
+
+<script>
+(function () {
+  var btn = document.getElementById("btn-unsub");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    btn.disabled = true;
+    var err = document.getElementById("unsub-error"); err.hidden = true;
+    fetch("/api/method/ai_saas.api.content.unsubscribe", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      body: JSON.stringify({ l: {{ lead | tojson }}, t: {{ token | tojson }} })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+      .then(function (res) {
+        if (!res.ok || (res.body && res.body.exc)) throw new Error("Não foi possível concluir. Tente novamente.");
+        document.getElementById("unsub-form").hidden = true;
+        document.getElementById("unsub-done").hidden = false;
+      })
+      .catch(function (e) { err.textContent = e.message || "Erro"; err.hidden = false; btn.disabled = false; });
+  });
+})();
+</script>
+{% endblock %}

@@ -14,6 +14,9 @@ TRIAL_CUSTOMER_GROUP = "Cloud - Trial"
 CONTRACT_TEMPLATE_TITLE = "MozEconomia Cloud"
 WELCOME_EMAIL_TEMPLATE = "MozEconomia Cloud - Entrega da Conta"
 DEFAULT_BOOKING_URL = "https://calendly.com/arlindoboa/chamada-de-ativacao-mozeconomia"
+# The Holiday List the fiscal alert counts business days against (erp.local ships one).
+DEFAULT_HOLIDAY_LIST = "Feriado Moçambicano"
+GUIDE_EMAIL_TEMPLATE = "MozEconomia Cloud - Guia Sectorial"
 
 
 def get_settings():
@@ -40,6 +43,10 @@ def get_settings():
 			"default_sales_user",
 			"max_concurrent_trials",
 			"max_signups_per_day",
+			"holiday_list",
+			"fiscal_alert_lead_days",
+			"auxiliary_max_without_signal",
+			"meta_pixel_id",
 		)
 	)
 	return frappe._dict(
@@ -67,4 +74,9 @@ def get_settings():
 		default_sales_user=raw.default_sales_user,
 		max_concurrent_trials=cint(raw.max_concurrent_trials) or 20,
 		max_signups_per_day=cint(raw.max_signups_per_day) or 10,
+		# Content layers (docs/content-layers-implementation.md).
+		holiday_list=raw.holiday_list or DEFAULT_HOLIDAY_LIST,
+		fiscal_alert_lead_days=cint(raw.fiscal_alert_lead_days) or 3,
+		auxiliary_max_without_signal=cint(raw.auxiliary_max_without_signal) or 3,
+		meta_pixel_id=(raw.meta_pixel_id or "").strip(),
 	)

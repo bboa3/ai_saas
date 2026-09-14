@@ -11,7 +11,14 @@ from frappe.utils import now_datetime, nowdate
 from ai_saas.saas.settings import get_settings
 
 # The one lifecycle, in order. A stage is reported by the event that causes it
-# (api/signup, contract_lifecycle, tenant_lifecycle, usage_signals) — never set by hand.
+# (api/content, api/signup, contract_lifecycle, tenant_lifecycle, usage_signals) — never
+# set by hand. The first four are the content layers in front of the form
+# (docs/content-layers-implementation.md): a contact in the base, a contact who opened
+# the sector guide, one who went silent, one who asked to leave.
+STAGE_SUBSCRIBED = "Cloud - Subscribed"
+STAGE_AWARE = "Cloud - Aware"
+STAGE_DORMANT = "Cloud - Dormant"
+STAGE_UNSUBSCRIBED = "Cloud - Unsubscribed"
 STAGE_FORM_STARTED = "Cloud - Form Started"
 STAGE_ACCOUNT_CREATED = "Cloud - Account Created"
 STAGE_TRIAL_ENGAGED = "Cloud - Trial Engaged"
@@ -20,7 +27,14 @@ STAGE_TRIAL_EXPIRED = "Cloud - Trial Expired"
 STAGE_ACTIVATED = "Cloud - Activated"
 STAGE_SUSPENDED = "Cloud - Suspended"
 STAGE_CLOSED = "Cloud - Closed"
+# Live content stages: an Opportunity here belongs to someone still to be won over,
+# and /registo advances it instead of opening a second one (enter_crm).
+CONTENT_STAGES = (STAGE_SUBSCRIBED, STAGE_AWARE, STAGE_DORMANT)
 STAGES = (
+	STAGE_SUBSCRIBED,
+	STAGE_AWARE,
+	STAGE_DORMANT,
+	STAGE_UNSUBSCRIBED,
 	STAGE_FORM_STARTED,
 	STAGE_ACCOUNT_CREATED,
 	STAGE_TRIAL_ENGAGED,
@@ -108,7 +122,8 @@ def report(opportunity, stage, status=None):
 	if not current:
 		return False
 	if current.sales_stage != stage:
-		values.update({"sales_stage": stage, "mz_stage_since": now_datetime()})
+		# A stage change is a signal: the auxiliary-email count (content layer 3) restarts.
+		values.update({"sales_stage": stage, "mz_stage_since": now_datetime(), "mz_aux_sent": 0})
 	if status and current.status != status:
 		values["status"] = status
 	if values:
@@ -210,8 +225,11 @@ def enter_crm(signup, stage=None):
 	"""Step 1 puts the person in the CRM: a Lead (one per email) and an Opportunity at
 	"Form Started" — the record the nurture reads and Sales sees. A second start for the
 	same address re-uses an Opportunity still at that stage (the resume link follows the
-	live signup through mz_signup, and the Dia 0 email goes again with the new link);
-	any other stage belongs to an earlier account, so a fresh Opportunity is opened.
+	live signup through mz_signup, and the Dia 0 email goes again with the new link).
+	An Opportunity at a content stage (Subscribed / Aware / Dormant — the person was in
+	the base before the form) is the same prospect: it advances to Form Started, and the
+	Dia 0 mail goes with the resume link since a stage change fires no "New" event.
+	Any other stage belongs to an earlier account, so a fresh Opportunity is opened.
 	`stage` overrides the entry stage for a signup that skipped step 1's entry (a
 	duplicate-of-account signup, or one started before the CRM entry existed): inserted
 	straight at Account Created, it never matches the nurture's "New" trigger."""
@@ -226,12 +244,13 @@ def enter_crm(signup, stage=None):
 		lead.insert(ignore_permissions=True)
 		lead_name = lead.name
 
-	opportunity = frappe.db.get_value(
+	found = frappe.db.get_value(
 		"Opportunity",
 		{"opportunity_from": "Lead", "party_name": lead_name, "status": "Open",
-		 "sales_stage": STAGE_FORM_STARTED},
-		"name", order_by="creation desc",
+		 "sales_stage": ("in", (STAGE_FORM_STARTED, *CONTENT_STAGES))},
+		["name", "sales_stage"], order_by="creation desc", as_dict=True,
 	)
+	opportunity = found.name if found else None
 	if not opportunity:
 		company = _get_company()
 		if not company:
@@ -244,6 +263,11 @@ def enter_crm(signup, stage=None):
 		})
 		opp.insert(ignore_permissions=True)
 		opportunity = opp.name
+	elif found.sales_stage in CONTENT_STAGES:
+		frappe.db.set_value("Opportunity", opportunity, {"mz_signup": signup.name, "contact_mobile": signup.phone})
+		report(opportunity, stage or STAGE_FORM_STARTED)
+		if stage is None:
+			_resend_day_zero(opportunity)
 	else:
 		frappe.db.set_value("Opportunity", opportunity, {"mz_signup": signup.name, "contact_mobile": signup.phone})
 		touch(opportunity)

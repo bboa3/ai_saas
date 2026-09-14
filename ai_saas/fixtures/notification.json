@@ -1374,5 +1374,48 @@
   "print_format": null,
   "property_value": null,
   "slack_webhook_url": null
+ },
+ {
+  "attach_print": 0,
+  "channel": "Email",
+  "condition": "doc.sales_stage in (\"Cloud - Subscribed\", \"Cloud - Aware\") and doc.contact_email and doc.mz_guide_sent_on and doc.opportunity_from == \"Lead\"",
+  "date_changed": "mz_guide_sent_on",
+  "days_in_advance": 4,
+  "docstatus": 0,
+  "doctype": "Notification",
+  "document_type": "Opportunity",
+  "enabled": 1,
+  "event": "Days After",
+  "is_standard": 0,
+  "message": "{% set lead = frappe.db.get_value(\"Lead\", doc.party_name, [\"first_name\",\"lead_name\",\"company_name\",\"mz_segment\",\"unsubscribed\"], as_dict=True) if doc.opportunity_from == \"Lead\" else None %}{% set url = mz_guide_url(doc.name) if lead else \"\" %}{% set trial_days = frappe.db.get_single_value(\"MZ SaaS Settings\", \"trial_length_days\") or 14 %}<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#020202\">{% if lead and not lead.unsubscribed and url %}<p>{{ mz_greeting(lead.first_name or lead.lead_name) }}</p><p>Há um capítulo do guia que custa dinheiro a quem o ignora: a <strong>comunicação mensal das facturas à Autoridade Tributária</strong>. No sector <strong>{{ lead.mz_segment }}</strong> isto significa que cada factura emitida{% if lead.company_name %} pela {{ lead.company_name }}{% endif %} tem de sair de um software certificado e ser comunicada todos os meses — e uma factura em papel ou em Excel não conta.</p><p><a href=\"{{ url }}\" style=\"color:#008000;font-weight:bold\">Reler esse capítulo no guia</a></p><p>Se quiser resolver isto de vez, é assim que funciona connosco:</p><ul><li>a conta fica <strong>pronta a facturar em dez minutos</strong>, em nome da sua empresa;</li><li>carregamos o seu catálogo de artigos e serviços;</li><li>a formação está incluída;</li><li><strong>{{ trial_days }} dias sem pagar nada</strong> — e só paga depois de validar que serve.</li></ul><p><a href=\"{{ frappe.utils.get_url(\"/registo\") }}\" style=\"display:inline-block;padding:12px 22px;background:#020202;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold\">Criar a minha conta</a></p><p style=\"font-size:13px;color:#5a6270\">Responda a este email com qualquer dúvida — respondemos no próprio dia. <a href=\"mailto:cloud@mozeconomia.co.mz\" style=\"color:#008000;font-weight:bold\">cloud@mozeconomia.co.mz</a> · WhatsApp +258 87 4444 645</p>{{ mz_signature() }}<p style=\"font-size:12px;color:#5a6270;margin-top:24px\">MozEconomia Cloud — software de facturação certificado pela Autoridade Tributária de Moçambique. <a href=\"{{ mz_unsubscribe_url(doc.party_name) }}\" style=\"color:#5a6270\">Deixar de receber</a>.</p>{% endif %}</div>",
+  "modified": "2026-09-06 12:00:00.000000",
+  "module": null,
+  "name": "AI SaaS - Guia - Dia 4",
+  "recipients": [
+   {
+    "bcc": null,
+    "cc": null,
+    "condition": null,
+    "parent": "AI SaaS - Guia - Dia 4",
+    "parentfield": "recipients",
+    "parenttype": "Notification",
+    "receiver_by_document_field": "contact_email",
+    "receiver_by_role": null
+   }
+  ],
+  "send_system_notification": 0,
+  "send_to_all_assignees": 0,
+  "sender": null,
+  "sender_email": null,
+  "set_property_after_alert": null,
+  "subject": "{{ doc.customer_name or \"A sua empresa\" }}: o capítulo do guia que custa dinheiro",
+  "value_changed": null,
+  "attach_files": null,
+  "from_attach_field": null,
+  "message_type": "HTML",
+  "method": null,
+  "print_format": null,
+  "property_value": null,
+  "slack_webhook_url": null
  }
 ]

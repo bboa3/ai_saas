@@ -489,3 +489,18 @@ main.page_content {
 .reg--curati .reg__partner { display: none; }
 .reg--curati .reg__btn:not(.reg__btn--ghost) { background: #0B3D2E; color: #fff; }
 .reg--curati .reg__btn:not(.reg__btn--ghost):hover { background: #082A20; }
+
+/* /alerta-fiscal (content layer 1) — the list of obligations and an optional-field hint. */
+.reg__list {
+  margin: 0 0 20px;
+  padding-left: 20px;
+  color: #3b4350;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.reg__optional {
+  color: #7a8290;
+  font-weight: 400;
+  font-size: 12px;
+}

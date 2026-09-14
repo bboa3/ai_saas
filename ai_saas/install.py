@@ -40,6 +40,8 @@ def after_install():
 	ensure_multipay_custom_fields()
 	ensure_multipay_modes_of_payment()
 	ensure_child_doctypes()
+	ensure_lead_sources()
+	ensure_fiscal_obligations()
 	frappe.db.commit()
 
 
@@ -68,6 +70,8 @@ def after_migrate():
 	ensure_multipay_custom_fields()
 	ensure_multipay_modes_of_payment()
 	ensure_child_doctypes()
+	ensure_lead_sources()
+	ensure_fiscal_obligations()
 	frappe.db.commit()
 
 
@@ -146,21 +150,26 @@ def backfill_contact_name():
 
 
 DAILY_ALERTS_JOB = "frappe.email.doctype.notification.notification.trigger_daily_alerts"
+FISCAL_ALERTS_JOB = "ai_saas.saas.fiscal_alerts.send_due_alerts"
 DAILY_ALERTS_CRON = "0 8 * * *"
+# Every job that mails customers on a daily rhythm is pinned to the same hour.
+MORNING_JOBS = (DAILY_ALERTS_JOB, FISCAL_ALERTS_JOB)
 
 
 def ensure_daily_alerts_hour():
-	"""Scheduled customer emails (Days Before/After) go out at 08:00 site time, not 00:00,
-	so the time-of-day greeting reads 'Bom dia'. frappe's sync_jobs resets the job to
-	'Daily' on every migrate, hence re-pinned here (after_migrate runs after sync_jobs)."""
-	name = frappe.db.get_value("Scheduled Job Type", {"method": DAILY_ALERTS_JOB}, "name")
-	if not name:
-		return
-	job = frappe.get_doc("Scheduled Job Type", name)
-	if job.frequency != "Cron" or job.cron_format != DAILY_ALERTS_CRON:
-		job.frequency = "Cron"
-		job.cron_format = DAILY_ALERTS_CRON
-		job.save(ignore_permissions=True)
+	"""Scheduled customer emails (Days Before/After, the fiscal alert) go out at 08:00 site
+	time, not 00:00, so the time-of-day greeting reads 'Bom dia'. frappe's sync_jobs resets
+	the jobs to 'Daily' on every migrate, hence re-pinned here (after_migrate runs after
+	sync_jobs)."""
+	for method in MORNING_JOBS:
+		name = frappe.db.get_value("Scheduled Job Type", {"method": method}, "name")
+		if not name:
+			continue
+		job = frappe.get_doc("Scheduled Job Type", name)
+		if job.frequency != "Cron" or job.cron_format != DAILY_ALERTS_CRON:
+			job.frequency = "Cron"
+			job.cron_format = DAILY_ALERTS_CRON
+			job.save(ignore_permissions=True)
 
 
 def backfill_billing_start():
@@ -256,7 +265,7 @@ def backfill_customer_primaries():
 			frappe.log_error(title=f"AI SaaS: primaries not set for {name}", message=frappe.get_traceback())
 
 
-from ai_saas.saas.settings import WELCOME_EMAIL_TEMPLATE
+from ai_saas.saas.settings import GUIDE_EMAIL_TEMPLATE, WELCOME_EMAIL_TEMPLATE
 
 # C2: the delivery email. Rendered by provisioning._send_welcome_email with the
 # context documented there. Create-if-missing — the copy belongs to the business.
@@ -374,6 +383,25 @@ LIFECYCLE_EMAIL_TEMPLATES = {
 }
 
 
+# Content layer 2 — Day 0: the sector in the subject, three lines, the link, nothing else.
+# No offer, no call: whoever opens the page changes stage; Day 4 brings the offer.
+GUIDE_EMAIL_TEMPLATES = {
+	GUIDE_EMAIL_TEMPLATE: {
+		"subject": "{{ segment }}: o guia prático de facturação{% if company_name %} para a {{ company_name }}{% endif %}",
+		"html": f'<div style="{_STYLE}">'
+		"<p>{{ greeting }}</p>"
+		"<p>Preparámos um guia para quem factura no sector <strong>{{ segment }}</strong>: "
+		"{% if guide_summary %}{{ guide_summary }}{% else %}como se factura na prática, o que a lei exige, "
+		"a comunicação mensal à Autoridade Tributária, os erros que custam dinheiro e uma lista de verificação de dez linhas.{% endif %}</p>"
+		f'<p><a href="{{{{ guide_url }}}}" style="{_BTN}">Abrir o guia — {{{{ guide_title or segment }}}}</a></p>'
+		"<p style=\"font-size:13px;color:#5a6270\">A página tem a data da última actualização e está preparada para imprimir.</p>"
+		"{{ signature }}"
+		'<p style="font-size:12px;color:#5a6270;margin-top:24px">MozEconomia Cloud — software de facturação certificado pela Autoridade Tributária de Moçambique. '
+		'<a href="{{ unsubscribe_url }}" style="color:#5a6270">Deixar de receber</a>.</p></div>',
+	},
+}
+
+
 def ensure_email_templates():
 	"""C2 + F2: the customer emails sent from code live in Email Templates, not in
 	Python strings. Create-if-missing — after that the copy belongs to the business."""
@@ -382,6 +410,7 @@ def ensure_email_templates():
 	wanted = {
 		WELCOME_EMAIL_TEMPLATE: {"subject": _WELCOME_EMAIL_SUBJECT, "html": _WELCOME_EMAIL_HTML},
 		**LIFECYCLE_EMAIL_TEMPLATES,
+		**GUIDE_EMAIL_TEMPLATES,
 	}
 	for name, t in wanted.items():
 		if frappe.db.exists("Email Template", name):
@@ -402,6 +431,7 @@ def push_email_templates():
 	wanted = {
 		WELCOME_EMAIL_TEMPLATE: {"subject": _WELCOME_EMAIL_SUBJECT, "html": _WELCOME_EMAIL_HTML},
 		**LIFECYCLE_EMAIL_TEMPLATES,
+		**GUIDE_EMAIL_TEMPLATES,
 	}
 	for name, t in wanted.items():
 		if frappe.db.exists("Email Template", name):
@@ -687,11 +717,35 @@ frappe.ui.form.on("MZ Signup", {
 """
 
 
+_LEAD_CLIENT_SCRIPT = r"""
+frappe.ui.form.on("Lead", {
+	refresh(frm) {
+		// Content layer 2: an imported contact enters the base by hand — Opportunity at
+		// "Cloud - Subscribed" and the sector guide sent with a per-company link.
+		if (frm.is_new() || !frm.doc.email_id || frm.doc.unsubscribed) return;
+		frm.add_custom_button(__("Enviar guia sectorial"), () => {
+			frappe.confirm(
+				__("Entrar este contacto na base e enviar-lhe o guia do sector? Se já tiver uma Oportunidade aberta, nada é enviado."),
+				() => frappe.call({
+					method: "ai_saas.saas.content.enroll",
+					args: { lead: frm.doc.name },
+					freeze: true,
+					freeze_message: __("A enviar o guia..."),
+				}).then(() => frm.reload_doc())
+			);
+		}, __("MozEconomia Cloud"));
+	},
+});
+"""
+
+
 def _sync_client_scripts():
-	"""Create or update the AI SaaS client scripts (Contract buttons; MZ Signup direct-sales entry)."""
+	"""Create or update the AI SaaS client scripts (Contract buttons; MZ Signup direct-sales
+	entry; Lead guide button)."""
 	for script_name, dt, script in (
 		("AI SaaS - Contract", "Contract", _CONTRACT_CLIENT_SCRIPT),
 		("AI SaaS - MZ Signup", "MZ Signup", _SIGNUP_CLIENT_SCRIPT),
+		("AI SaaS - Lead", "Lead", _LEAD_CLIENT_SCRIPT),
 	):
 		if frappe.db.exists("Client Script", script_name):
 			frappe.db.set_value("Client Script", script_name, {"script": script, "enabled": 1})
@@ -976,3 +1030,56 @@ def _ensure_child_doctype(name, autoname, title_field, fields):
 			title=f"AI SaaS: _ensure_child_doctype '{name}' failed",
 			message=frappe.get_traceback(),
 		)
+
+
+# ---------------------------------------------------------------------------
+# Content layers (docs/content-layers-implementation.md)
+# ---------------------------------------------------------------------------
+
+def ensure_lead_sources():
+	"""The origins the content layers stamp on Lead.source / Opportunity.source, so
+	"where did each new customer come from" is one filter on native fields."""
+	from ai_saas.saas.content import LEAD_SOURCES
+
+	for name in LEAD_SOURCES:
+		if not frappe.db.exists("Lead Source", name):
+			frappe.get_doc({"doctype": "Lead Source", "source_name": name}).insert(ignore_permissions=True)
+
+
+# Seeded DISABLED, deadline rules left for the accountant: the job never sends an
+# obligation that is not enabled AND reviewed (reviewed_by + reviewed_on). Codes match
+# the 'Conformidade MZ' rows of the Segment Intelligence Map.
+SEED_FISCAL_OBLIGATIONS = (
+	{"title": "Comunicação mensal de facturas (e-Declaração)", "code": "E-DECLARACAO", "periodicity": "Monthly",
+	 "deadline_day": 1, "applies_to_all_segments": 1, "requires_vat": 0,
+	 "who": "Todas as empresas com software de facturação certificado.",
+	 "what_to_submit": "O ficheiro das facturas emitidas no mês anterior, na plataforma e-Declaração da AT."},
+	{"title": "Declaração periódica de IVA", "code": "IVA", "periodicity": "Monthly",
+	 "deadline_day": 1, "applies_to_all_segments": 1, "requires_vat": 1,
+	 "who": "Sujeitos passivos de IVA no regime normal.",
+	 "what_to_submit": "A declaração periódica do IVA e o pagamento do imposto apurado."},
+	{"title": "Retenção na fonte de IRPS (trabalho dependente)", "code": "IRPS", "periodicity": "Monthly",
+	 "deadline_day": 1, "applies_to_all_segments": 1, "requires_vat": 0,
+	 "who": "Empresas com trabalhadores por conta de outrem.",
+	 "what_to_submit": "A entrega do IRPS retido nos salários do mês anterior."},
+	{"title": "Contribuições para o INSS", "code": "INSS", "periodicity": "Monthly",
+	 "deadline_day": 1, "applies_to_all_segments": 1, "requires_vat": 0,
+	 "who": "Empresas com trabalhadores inscritos no INSS.",
+	 "what_to_submit": "A folha de remunerações e o pagamento das contribuições (trabalhador e empresa)."},
+	{"title": "Declaração anual de rendimentos (IRPC)", "code": "IRPC", "periodicity": "Annual",
+	 "deadline_day": 1, "deadline_month": 1, "applies_to_all_segments": 1, "requires_vat": 0,
+	 "who": "Empresas sujeitas a IRPC.",
+	 "what_to_submit": "A declaração anual de rendimentos (Modelo 20) e a declaração de informação contabilística e fiscal."},
+)
+
+
+def ensure_fiscal_obligations():
+	"""Create the seed rows once; never touch an existing one (the copy and the dates
+	belong to the accountant after creation)."""
+	if not frappe.db.exists("DocType", "MZ Fiscal Obligation"):
+		return
+	for row in SEED_FISCAL_OBLIGATIONS:
+		if frappe.db.exists("MZ Fiscal Obligation", row["title"]):
+			continue
+		frappe.get_doc({"doctype": "MZ Fiscal Obligation", "enabled": 0, **row}).insert(ignore_permissions=True)
+

@@ -42,6 +42,8 @@ scheduler_events = {
 		"ai_saas.saas.tenant_lifecycle.process_lifecycle",
 		"ai_saas.saas.usage_signals.collect_usage_snapshots",
 		"ai_saas.multipay.tasks.sync_pending_payments",
+		# Content layer 1 — the fiscal-deadline alert (window-based, skip-tolerant).
+		"ai_saas.saas.fiscal_alerts.send_due_alerts",
 	],
 	"hourly": [
 		"ai_saas.saas.provisioning.retry_stuck_provisioning",
@@ -51,8 +53,11 @@ scheduler_events = {
 # Helpers available to Email Templates and Notifications (get_activation_url).
 jinja = {"methods": "ai_saas.utils.jinja"}
 
+# The guide-open beacon (content layer 2): inert unless the URL carries ?o=&t=.
+web_include_js = ["/assets/ai_saas/js/guide_open.js"]
+
 fixtures = [
-	{"dt": "Custom Field", "filters": [["dt", "in", ["Contract", "Lead", "Opportunity", "Subscription Plan"]], ["module", "=", "AI SaaS"]]},
+	{"dt": "Custom Field", "filters": [["dt", "in", ["Contract", "Lead", "Opportunity", "Subscription Plan", "Web Page"]], ["module", "=", "AI SaaS"]]},
 	{"dt": "Property Setter", "filters": [["name", "in", ["Contract-start_date-reqd"]]]},
 	{"dt": "Notification", "filters": [["name", "like", "AI SaaS%"]]},
 	{"dt": "Web Form", "filters": [["name", "in", ["cloud-feedback"]]]},

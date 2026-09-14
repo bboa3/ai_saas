@@ -11,9 +11,20 @@ import re
 import frappe
 
 from ai_saas.saas.activation import get_activation_url, get_reactivation_url
+from ai_saas.saas.content import guide_url as mz_guide_url
+from ai_saas.saas.content import unsubscribe_url as mz_unsubscribe_url
 from ai_saas.saas.crm import find_contract as mz_find_contract
 
-__all__ = ["get_activation_url", "get_reactivation_url", "mz_find_contract", "mz_first_name", "mz_greeting", "mz_signature"]
+__all__ = [
+	"get_activation_url",
+	"get_reactivation_url",
+	"mz_find_contract",
+	"mz_first_name",
+	"mz_greeting",
+	"mz_guide_url",
+	"mz_signature",
+	"mz_unsubscribe_url",
+]
 
 TEAM = "Equipa MozEconomia Cloud"
 

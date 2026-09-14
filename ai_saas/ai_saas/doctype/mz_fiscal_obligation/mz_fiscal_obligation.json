@@ -1,0 +1,207 @@
+{
+ "actions": [],
+ "autoname": "field:title",
+ "creation": "2026-09-06 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_identity",
+  "title",
+  "code",
+  "enabled",
+  "column_break_identity",
+  "periodicity",
+  "deadline_day",
+  "deadline_month",
+  "last_alerted_deadline",
+  "section_scope",
+  "applies_to_all_segments",
+  "requires_vat",
+  "column_break_scope",
+  "who",
+  "section_content",
+  "what_to_submit",
+  "legal_basis",
+  "alert_subject",
+  "alert_body",
+  "section_review",
+  "reviewed_by",
+  "reviewed_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_identity",
+   "fieldtype": "Section Break",
+   "label": "Obrigação"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Designação",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "code",
+   "fieldtype": "Data",
+   "label": "Código",
+   "description": "Liga a obrigação aos sectores: o mesmo código que consta em 'Conformidade MZ' do Segment Intelligence Map (IVA, IRPS, INSS, IRPC…).",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Activa",
+   "default": "0",
+   "description": "Só pode ser activada depois de revista (revisor e data preenchidos). Nada é enviado antes.",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_identity",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "periodicity",
+   "fieldtype": "Select",
+   "label": "Periodicidade",
+   "options": "Monthly\nQuarterly\nAnnual",
+   "default": "Monthly",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "deadline_day",
+   "fieldtype": "Int",
+   "label": "Dia-limite (do mês)",
+   "description": "Dia do mês em que termina o prazo. Num mês mais curto usa-se o último dia.",
+   "reqd": 1
+  },
+  {
+   "fieldname": "deadline_month",
+   "fieldtype": "Int",
+   "label": "Mês-limite",
+   "description": "Anual: o mês do prazo (1–12). Trimestral: o primeiro mês em que ocorre (1–3); repete de 3 em 3 meses.",
+   "depends_on": "eval:doc.periodicity != 'Monthly'",
+   "mandatory_depends_on": "eval:doc.periodicity != 'Monthly'"
+  },
+  {
+   "fieldname": "last_alerted_deadline",
+   "fieldtype": "Date",
+   "label": "Último prazo alertado",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "section_scope",
+   "fieldtype": "Section Break",
+   "label": "Quem abrange"
+  },
+  {
+   "fieldname": "applies_to_all_segments",
+   "fieldtype": "Check",
+   "label": "Todos os sectores",
+   "default": "1",
+   "description": "Desligado: só os sectores cujo Segment Intelligence Map tem este código em 'Conformidade MZ'."
+  },
+  {
+   "fieldname": "requires_vat",
+   "fieldtype": "Check",
+   "label": "Só sujeitos passivos de IVA",
+   "default": "0",
+   "description": "Ligado: contactos no regime 'Isento' não recebem este alerta."
+  },
+  {
+   "fieldname": "column_break_scope"
+  ,
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "who",
+   "fieldtype": "Small Text",
+   "label": "Quem é abrangido (texto)"
+  },
+  {
+   "fieldname": "section_content",
+   "fieldtype": "Section Break",
+   "label": "Conteúdo do alerta"
+  },
+  {
+   "fieldname": "what_to_submit",
+   "fieldtype": "Text",
+   "label": "O que é preciso submeter"
+  },
+  {
+   "fieldname": "legal_basis",
+   "fieldtype": "Small Text",
+   "label": "Base legal"
+  },
+  {
+   "fieldname": "alert_subject",
+   "fieldtype": "Data",
+   "label": "Assunto do email",
+   "description": "Jinja: {{ deadline }} é a data-limite (dd/mm/aaaa), {{ lead }} o contacto.",
+   "length": 200
+  },
+  {
+   "fieldname": "alert_body",
+   "fieldtype": "Text Editor",
+   "label": "Corpo do email",
+   "description": "Texto fixo, escrito uma vez. Jinja disponível: {{ deadline }}, {{ lead.first_name }}, {{ lead.company_name }}, {{ obligation.who }}, {{ obligation.what_to_submit }}, {{ obligation.legal_basis }}."
+  },
+  {
+   "fieldname": "section_review",
+   "fieldtype": "Section Break",
+   "label": "Revisão legal"
+  },
+  {
+   "fieldname": "reviewed_by",
+   "fieldtype": "Data",
+   "label": "Revisto por (contabilista / jurista)"
+  },
+  {
+   "fieldname": "reviewed_on",
+   "fieldtype": "Date",
+   "label": "Revisto em"
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-06 00:00:00",
+ "modified_by": "Administrator",
+ "module": "AI SaaS",
+ "name": "MZ Fiscal Obligation",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

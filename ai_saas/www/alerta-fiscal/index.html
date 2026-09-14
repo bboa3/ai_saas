@@ -1,0 +1,71 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block head_include %}
+<link rel="stylesheet" href="/registo/index.css?v={{ asset_version or 0 }}">
+<meta name="description" content="Receba um aviso gratuito alguns dias antes de cada obrigação fiscal em Moçambique: IVA, IRPS, INSS, comunicação mensal de facturas.">
+{% if meta_pixel_id %}
+<script>
+!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', {{ meta_pixel_id | tojson }}); fbq('track', 'PageView');
+</script>
+{% endif %}
+{% endblock %}
+
+{% block script %}
+<script>window.MZ_ALERT = { assetVersion: {{ (asset_version or 0) | tojson }}, pixel: {{ (meta_pixel_id or "") | tojson }} };</script>
+<script src="/alerta-fiscal/index.js?v={{ asset_version or 0 }}"></script>
+{% endblock %}
+
+{% block page_content %}
+<div class="reg">
+  <img class="reg__logo" src="/assets/erpnext_mz/images/logo.svg" alt="MozEconomia Cloud">
+
+  <section class="reg__step" id="alert-form">
+    <h1 tabindex="-1">Alerta Fiscal</h1>
+    <p class="reg__lead">Um aviso no seu email {{ lead_days }} dias úteis antes de cada obrigação fiscal — o prazo, quem é abrangido e o que é preciso submeter. Gratuito. Sem venda.</p>
+    {% if obligations %}
+    <ul class="reg__list">
+      {% for o in obligations %}<li>{{ o.title }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+
+    <label for="full_name">O seu nome</label>
+    <input id="full_name" name="full_name" type="text" autocomplete="name" required>
+    <div class="reg__err" role="alert" aria-live="polite" data-for="full_name"></div>
+
+    <label for="email">Email de trabalho</label>
+    <input id="email" name="email" type="email" autocomplete="email" inputmode="email" required>
+    <div class="reg__err" role="alert" aria-live="polite" data-for="email"></div>
+
+    <label for="company_name">Empresa</label>
+    <input id="company_name" name="company_name" type="text" autocomplete="organization" required>
+    <div class="reg__err" role="alert" aria-live="polite" data-for="company_name"></div>
+
+    <label for="segment">Sector de actividade</label>
+    <select id="segment" name="segment" required>
+      <option value="">Escolha…</option>
+      {% for i in industries %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+    </select>
+    <div class="reg__err" role="alert" aria-live="polite" data-for="segment"></div>
+
+    <label for="tax_regime">Regime de IVA <span class="reg__optional">(opcional)</span></label>
+    <select id="tax_regime" name="tax_regime">
+      <option value="">Prefiro não dizer</option>
+      {% for r in tax_regimes %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+    </select>
+
+    <button type="button" class="reg__btn" id="btn-subscribe">Quero receber o Alerta Fiscal</button>
+    <p class="reg__err reg__err--global" id="alert-error" hidden></p>
+    <p class="reg__note">Recebe apenas os avisos de prazos. Pode deixar de os receber com um clique, em qualquer email.</p>
+  </section>
+
+  <div class="reg__done" id="alert-done" hidden>
+    <h1>Está subscrito</h1>
+    <p class="reg__lead">O primeiro aviso chega antes do próximo prazo. Se o seu sector tiver um guia prático de facturação, recebe-o hoje no email indicado.</p>
+  </div>
+
+  <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
+</div>
+{% endblock %}

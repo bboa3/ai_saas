@@ -26,7 +26,13 @@
   "booking_url",
   "section_ceilings",
   "max_concurrent_trials",
-  "max_signups_per_day"
+  "max_signups_per_day",
+  "section_content",
+  "holiday_list",
+  "fiscal_alert_lead_days",
+  "column_break_content",
+  "auxiliary_max_without_signal",
+  "meta_pixel_id"
  ],
  "fields": [
   {
@@ -162,10 +168,45 @@
    "fieldtype": "Int",
    "label": "Máximo de Registos por Dia",
    "default": "10"
+  },
+  {
+   "fieldname": "section_content",
+   "fieldtype": "Section Break",
+   "label": "Conteúdo e Alerta Fiscal"
+  },
+  {
+   "fieldname": "holiday_list",
+   "fieldtype": "Link",
+   "label": "Lista de Feriados (dias úteis do Alerta Fiscal)",
+   "options": "Holiday List",
+   "description": "Sem valor: 'Feriado Moçambicano'. Fins-de-semana são sempre excluídos."
+  },
+  {
+   "fieldname": "fiscal_alert_lead_days",
+   "fieldtype": "Int",
+   "label": "Antecedência do Alerta Fiscal (dias úteis)",
+   "default": "3"
+  },
+  {
+   "fieldname": "column_break_content",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "auxiliary_max_without_signal",
+   "fieldtype": "Int",
+   "label": "Emails auxiliares sem sinal até Dormente",
+   "default": "3",
+   "description": "Ao atingir este número de emails auxiliares sem abertura do guia, a Oportunidade passa a 'Cloud - Dormant' e recebe só o Alerta Fiscal."
+  },
+  {
+   "fieldname": "meta_pixel_id",
+   "fieldtype": "Data",
+   "label": "Meta Pixel ID (página /alerta-fiscal)",
+   "description": "Vazio: sem pixel."
   }
  ],
  "links": [],
- "modified": "2026-09-01 12:00:00",
+ "modified": "2026-09-06 12:00:00",
  "modified_by": "Administrator",
  "module": "AI SaaS",
  "name": "MZ SaaS Settings",
