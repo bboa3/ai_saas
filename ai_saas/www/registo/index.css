@@ -490,6 +490,14 @@ main.page_content {
 .reg--curati .reg__btn:not(.reg__btn--ghost) { background: #0B3D2E; color: #fff; }
 .reg--curati .reg__btn:not(.reg__btn--ghost):hover { background: #082A20; }
 
+/* Partner theme — Edinte: full logo, Edinte blue. The wordmark's own #00A0F0 carries white
+   text at 2.88:1; #0077B6 is the same hue one step deeper (4.87:1, AA), hover #005F92. */
+.reg--edinte { --reg-accent: #0077B6; --reg-accent-tint: #E6F4FA; }
+.reg--edinte .reg__logo { height: 40px; }
+.reg--edinte .reg__partner { display: none; }
+.reg--edinte .reg__btn:not(.reg__btn--ghost) { background: #0077B6; color: #fff; }
+.reg--edinte .reg__btn:not(.reg__btn--ghost):hover { background: #005F92; }
+
 /* /alerta-fiscal (content layer 1) — the list of obligations and an optional-field hint. */
 .reg__list {
   margin: 0 0 20px;

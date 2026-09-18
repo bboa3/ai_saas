@@ -56,6 +56,10 @@ class TestAppsForSegment(FrappeTestCase):
 		                 ["erpnext", "erpnext_mz", "healthcare", "pos_next", "curati_connect"])
 		self.assertEqual(P.apps_for_segment(SEG, None, ".erp.kalenyholding.com"), P.apps_for_segment(SEG, None))
 		self.assertEqual(P.domain_for(".erp.kalenyholding.com"), ".erp.kalenyholding.com")
+		# Edinte, Lda. (2026-09-14) is domain-only like Kaleny: the segment decides the apps.
+		self.assertEqual(P.apps_for_segment(SEG, None, ".erp.edinte.co.mz"), P.apps_for_segment(SEG, None))
+		self.assertEqual(P.domain_for(".erp.edinte.co.mz"), ".erp.edinte.co.mz")
+		self.assertEqual(P.ROUTE_BY_DOMAIN[".erp.edinte.co.mz"], "/registo-edinte")
 		self.assertEqual(P.domain_for("evil.com"), P.DEFAULT_DOMAIN)
 		self.assertEqual(P.domain_for(None), P.DEFAULT_DOMAIN)
 		self.assertEqual(P.domain_profile(".erp.curati.co.mz")["segment"], "Saúde & Bem-Estar")

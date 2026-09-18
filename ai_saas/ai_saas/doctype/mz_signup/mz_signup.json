@@ -207,7 +207,7 @@
    "fieldname": "mz_domain",
    "fieldtype": "Select",
    "label": "Domínio",
-   "options": ".erp.mozeconomia.co.mz\n.erp.curati.co.mz\n.erp.kalenyholding.com",
+   "options": ".erp.mozeconomia.co.mz\n.erp.curati.co.mz\n.erp.kalenyholding.com\n.erp.edinte.co.mz",
    "default": ".erp.mozeconomia.co.mz"
   },
   {
@@ -278,7 +278,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-01 12:00:00",
+ "modified": "2026-09-14 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "AI SaaS",
  "name": "MZ Signup",

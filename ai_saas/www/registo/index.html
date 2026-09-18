@@ -4,6 +4,12 @@
 
 {% block head_include %}
 <link rel="stylesheet" href="/registo/index.css?v={{ asset_version or 0 }}">
+{% if meta_pixel_id %}
+<script>
+!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', {{ meta_pixel_id | tojson }}); fbq('track', 'PageView');
+</script>
+{% endif %}
 {% endblock %}
 
 {% block script %}
@@ -17,6 +23,7 @@
     route: {{ route | tojson }},
     presetIndustry: {{ (preset_industry or "") | tojson }},
     minimumUsers: {{ (minimum_users or 2) | tojson }},
+    pixel: {{ (meta_pixel_id or "") | tojson }},
     assetVersion: {{ (asset_version or 0) | tojson }}
   };
 </script>

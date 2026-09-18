@@ -34,6 +34,19 @@
     try { if (body.exception) { var ex = String(body.exception); var i = ex.lastIndexOf(": "); if (i > -1 && ex.length - i < 200) return ex.slice(i + 2); } } catch (e) {}
     return "Não foi possível continuar. Tente novamente.";
   }
+  // Meta Pixel — loaded only when this form has its own pixel id (FORMS in index.py).
+  // An ad blocker or a slow fbevents.js must never get in the way of the signup.
+  function track(event, params) { try { if (window.fbq && cfg.pixel) fbq("track", event, params || {}); } catch (e) {} }
+  // The Lead is whoever reaches step 3: a name and an email (step 1) may be someone with no
+  // company at all — a company and its NUIT (step 2) is a prospect. Once per signup: going
+  // back to step 2 and forward again, or reloading the page, never reports a second one.
+  var LEAD_KEY = "mz_signup_lead", leadSentFor = "";
+  function trackLeadOnce() {
+    if (!token || leadSentFor === token) return;
+    try { if (localStorage.getItem(LEAD_KEY) === token) { leadSentFor = token; return; } localStorage.setItem(LEAD_KEY, token); } catch (e) {}
+    leadSentFor = token;
+    track("Lead", { content_name: currentPlan() });
+  }
   function forgetToken() { token = ""; try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} }
   function isStaleToken(msg) { return /inválida ou expirada/i.test(msg || ""); }
   var $ = function (sel) { return document.querySelector(sel); };
@@ -220,6 +233,7 @@
          // The address named no city: reveal the one extra question instead of failing.
          if (r.state === "need_city") { askCity(r.message); return; }
          if (r.state !== "continue") { terminal(r); return; }
+         if (step === 2) trackLeadOnce();
          show(step + 1);
        })
        .catch(function (msg) {
@@ -245,6 +259,12 @@
     working("A criar a sua conta…", "Estamos a preparar tudo. Não feche esta página — demora alguns segundos.");
     api("update", { token: token, step: 3, data: { subdomain: val("subdomain"), plan: currentPlan(), users: val("users"), terms_accepted: 1 } })
       .then(function () { return api("submit", { token: token }); })
+      .then(function (r) {
+        // The conversion the ads are bought for: an account accepted for creation. Fired here,
+        // on the answer to this click — never in terminal(), which also runs on polls and resumes.
+        if (r.state === "progress" || r.state === "complete") track("CompleteRegistration", { content_name: currentPlan(), status: r.state });
+        return r;
+      })
       .then(function (r) { try { terminal(r); } catch (e) { console.error("registo: terminal", e); throw "Conta criada, mas a página não conseguiu mostrar o resultado. Verifique o seu email."; } })
       .catch(function (msg) {
         // Back to the form exactly as it was, with the reason under the button.

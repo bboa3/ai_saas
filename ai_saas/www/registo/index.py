@@ -3,7 +3,7 @@
 A resume token is validated in get_context BEFORE anything renders; only then are
 the stored values put into the page. Without a token the page starts blank.
 
-Partner forms (/registo-curati, /registo-kalenyholding) render this same template
+Partner forms (/registo-curati, /registo-kalenyholding, /registo-edinte) render this same template
 through `build_context(context, domain)`: the tenant domain is hard-coded to the
 form, everything else (plans, settings, funnel) is MozEconomia Cloud's.
 """
@@ -16,8 +16,10 @@ no_cache = 1
 no_breadcrumbs = 1
 
 # What each form shows differently: who it is for and where the account lives.
+# "meta_pixel" is the form owner's own Meta Pixel id: each form reports its PageView, Lead and
+# CompleteRegistration to its own pixel, never to another's. No key — no pixel on that form.
 FORMS = {
-	DEFAULT_DOMAIN: {"brand": "MozEconomia Cloud", "partner": ""},
+	DEFAULT_DOMAIN: {"brand": "MozEconomia Cloud", "partner": "", "meta_pixel": "1255758859281459"},
 	# Curati's own look: full logo (icon + wordmark), Curati green (css .reg--curati)
 	".erp.curati.co.mz": {"brand": "Curati", "partner": "Curati Saúde, LDA",
 	                      "theme": "curati", "logo": "/assets/ai_saas/images/curati-logo.png"},
@@ -25,6 +27,9 @@ FORMS = {
 	".erp.kalenyholding.com": {"brand": "Kaleny Holding", "partner": "Kaleny Holding, SU, SA",
 	                            "theme": "kaleny", "icon": "/assets/ai_saas/images/kaleny-icon.png",
 	                            "tagline": "Holding Company"},
+	# Edinte's own look: full logo (mark + wordmark), Edinte blue (css .reg--edinte)
+	".erp.edinte.co.mz": {"brand": "Edinte", "partner": "Edinte, Lda.",
+	                      "theme": "edinte", "logo": "/assets/ai_saas/images/edinte-logo.png"},
 }
 
 
@@ -47,6 +52,7 @@ def build_context(context, domain):
 	context.brand_icon = form.get("icon") or ""
 	context.brand_logo = form.get("logo") or ""
 	context.brand_tagline = form.get("tagline") or ""
+	context.meta_pixel_id = form.get("meta_pixel") or ""
 	context.preset_industry = domain_profile(domain).get("segment") or ""
 	context.title = "Criar a minha conta — " + form["brand"]
 	here = os.path.dirname(os.path.abspath(__file__))

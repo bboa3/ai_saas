@@ -25,16 +25,18 @@ def get_bench_cmd() -> str:
 # hard-coded per signup form — MozEconomia's own or a partner's. The domain *is* the
 # partner identity: DOMAIN_PROFILES says what a domain implies for a new tenant.
 DEFAULT_DOMAIN = ".erp.mozeconomia.co.mz"
-DOMAINS = (DEFAULT_DOMAIN, ".erp.curati.co.mz", ".erp.kalenyholding.com")
+DOMAINS = (DEFAULT_DOMAIN, ".erp.curati.co.mz", ".erp.kalenyholding.com", ".erp.edinte.co.mz")
 DOMAIN_PROFILES = {
 	# Curati Saúde, LDA — every tenant is a pharmacy: sector fixed, pharmacy apps on top
 	# of the segment's (healthcare first: curati_connect requires it).
 	".erp.curati.co.mz": {"segment": "Saúde & Bem-Estar", "apps": ("healthcare", "pos_next", "curati_connect")},
 	# Kaleny Holding, SU, SA — domain only.
 	".erp.kalenyholding.com": {},
+	# Edinte, Lda. — domain only (reseller: MozEconomia contracts and bills the client).
+	".erp.edinte.co.mz": {},
 }
 ROUTE_BY_DOMAIN = {DEFAULT_DOMAIN: "/registo", ".erp.curati.co.mz": "/registo-curati",
-                   ".erp.kalenyholding.com": "/registo-kalenyholding"}
+                   ".erp.kalenyholding.com": "/registo-kalenyholding", ".erp.edinte.co.mz": "/registo-edinte"}
 
 
 def domain_for(value=None) -> str:
