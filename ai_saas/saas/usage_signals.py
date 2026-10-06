@@ -200,10 +200,10 @@ def score(snapshot) -> tuple[int, list[str]]:
 	prev = int(snapshot.get("invoice_days_prev_7d") or 0)
 	if days >= 2:
 		points += 2
-		reasons.append(f"facturou em {days} dias distintos esta semana")
+		reasons.append(f"faturou em {days} dias distintos esta semana")
 	if days > prev and prev > 0:
 		points += 1
-		reasons.append(f"a acelerar ({prev} → {days} dias com facturas)")
+		reasons.append(f"a acelerar ({prev} → {days} dias com faturas)")
 	if int(snapshot.get("active_users_7d") or 0) >= 2:
 		points += 1
 		reasons.append(f"{snapshot.active_users_7d} utilizadores activos esta semana")
@@ -212,7 +212,7 @@ def score(snapshot) -> tuple[int, list[str]]:
 		reasons.append(f"{snapshot.master_data_count} clientes/artigos/fornecedores próprios")
 	if int(snapshot.get("other_docs_30d") or 0) >= 1:
 		points += 1
-		reasons.append(f"{snapshot.other_docs_30d} documentos além de facturas (pagamentos, compras, stock, salários)")
+		reasons.append(f"{snapshot.other_docs_30d} documentos além de faturas (pagamentos, compras, stock, salários)")
 	return points, reasons
 
 
@@ -250,7 +250,7 @@ def evaluate_signals(contract, snapshot):
 			crm.create_sales_todo(
 				opportunity,
 				f"{contract.party_name} esteve activo e parou: sem login há {SILENT_DAYS}+ dias "
-				f"e sem facturas esta semana (trial termina em {contract.start_date}). "
+				f"e sem faturas esta semana (trial termina em {contract.start_date}). "
 				"Contactar antes que expire.",
 				MARKER_COOLING,
 			)
@@ -259,7 +259,7 @@ def evaluate_signals(contract, snapshot):
 			crm.create_sales_todo(
 				opportunity,
 				f"{contract.party_name} está a meio do trial (termina em {contract.start_date}) "
-				f"sem nenhum login nem factura. Contactar antes que expire.",
+				f"sem nenhum login nem fatura. Contactar antes que expire.",
 				MARKER_COLD,
 			)
 	return signal

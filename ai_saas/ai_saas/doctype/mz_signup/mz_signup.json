@@ -199,8 +199,8 @@
   {
    "fieldname": "users",
    "fieldtype": "Int",
-   "label": "Utilizadores",
-   "default": "2",
+   "label": "Utilizadores (plano por utilizador)",
+   "description": "Só para planos faturados por utilizador (Corporativo). Num pacote os utilizadores são os do plano.",
    "non_negative": 1
   },
   {

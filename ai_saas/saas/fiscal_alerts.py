@@ -23,7 +23,7 @@ from ai_saas.utils.dates import holiday_dates, holiday_list_covers, subtract_bus
 
 FOOTER = (
 	'<p style="font-size:12px;color:#5a6270;margin-top:24px">Alerta Fiscal da MozEconomia Cloud — '
-	"software de facturação certificado pela Autoridade Tributária de Moçambique. "
+	"software de faturação certificado pela Autoridade Tributária de Moçambique. "
 	'<a href="{unsubscribe_url}" style="color:#5a6270">Deixar de receber</a>.</p>'
 )
 

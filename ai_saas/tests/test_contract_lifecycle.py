@@ -13,7 +13,7 @@ from unittest.mock import patch
 import frappe
 from frappe.utils import add_days, nowdate
 
-from ai_saas.tests.helpers import FunnelTestCase
+from ai_saas.tests.helpers import CORP_PLAN, FunnelTestCase
 
 TEST_CUSTOMER = "_Test Cliente AI SaaS B1"
 TEST_PLAN = "Premium Mensal - MozEconomia Cloud"
@@ -143,81 +143,112 @@ class TestContractLifecycle(FunnelTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			doc.save(ignore_permissions=True)
 
-	# ---- Per-user pricing: Contract.mz_users -> Subscription qty -----------------
-	# First user included: N seats bill N-1 plan costs, floor 1 (_billed_qty).
+	# ---- Package pricing: the Subscription's qty ---------------------------------
+	# A package bills one plan cost whatever the contract says about users; a
+	# per-user plan (Corporativo) bills one plan cost per contracted user.
 	# _setup_subscription runs for real here (billing start is 14 days out, so no
 	# invoice is generated); only provisioning is patched.
 
-	@patch("ai_saas.saas.provisioning.provision_tenant")
-	def test_subscription_qty_from_mz_users(self, provision):
-		doc = self._make_contract(is_signed=1, users=5)
-		doc.submit()
-		sub = frappe.db.get_value("Contract", doc.name, "mz_linked_subscription")
+	def _qty(self, contract_name):
+		sub = frappe.db.get_value("Contract", contract_name, "mz_linked_subscription")
 		self.assertTrue(sub)
-		self.assertEqual(frappe.db.get_value("Subscription Plan Detail", {"parent": sub}, "qty"), 4)
+		return frappe.db.get_value("Subscription Plan Detail", {"parent": sub}, "qty")
 
 	@patch("ai_saas.saas.provisioning.provision_tenant")
-	def test_minimum_seats_bill_one_plan_cost(self, provision):
-		"""The entry price: 2 seats (the self-service minimum) = qty 1 = one plan cost."""
+	def test_package_plan_bills_one_whatever_the_users(self, provision):
+		doc = self._make_contract(is_signed=1, users=5)
+		doc.submit()
+		self.assertEqual(self._qty(doc.name), 1)
+
+		empty = self._make_contract(is_signed=1, tenant=TEST_SLUG + "-2")
+		empty.submit()
+		self.assertEqual(self._qty(empty.name), 1)
+		# The contract is not rewritten: a package's users belong to the plan.
+		self.assertFalse(frappe.db.get_value("Contract", empty.name, "mz_users"))
+
+	@patch("ai_saas.saas.provisioning.provision_tenant")
+	def test_package_plan_ignores_a_users_change(self, provision):
 		doc = self._make_contract(is_signed=1, users=2)
 		doc.submit()
-		sub = frappe.db.get_value("Contract", doc.name, "mz_linked_subscription")
-		self.assertEqual(frappe.db.get_value("Subscription Plan Detail", {"parent": sub}, "qty"), 1)
+
+		doc.reload()
+		doc.mz_users = 9
+		doc.save(ignore_permissions=True)
+		self.assertEqual(self._qty(doc.name), 1)
 
 	@patch("ai_saas.saas.provisioning.provision_tenant")
-	def test_subscription_qty_defaults_to_one(self, provision):
-		"""Empty seats (desk/legacy path) bill 1 — the pre-seats flat behaviour — and
-		the contract is normalised to the entitlement that buys (billed + 1)."""
-		doc = self._make_contract(is_signed=1)
+	def test_per_user_plan_bills_the_contracted_users(self, provision):
+		doc = self._make_contract(is_signed=1, plan=CORP_PLAN, users=5)
 		doc.submit()
-		sub = frappe.db.get_value("Contract", doc.name, "mz_linked_subscription")
-		self.assertEqual(frappe.db.get_value("Subscription Plan Detail", {"parent": sub}, "qty"), 1)
-		self.assertEqual(frappe.db.get_value("Contract", doc.name, "mz_users"), 2)
+		self.assertEqual(self._qty(doc.name), 5)
+
+	def test_per_user_plan_refuses_a_contract_without_users(self):
+		"""No silent 'one user': a Corporativo contract cannot be saved without the number."""
+		with self.assertRaisesRegex(frappe.ValidationError, "Número de Utilizadores"):
+			self._make_contract(is_signed=1, plan=CORP_PLAN)
+		# A package needs none.
+		self._make_contract(is_signed=0)
 
 	@patch("ai_saas.saas.provisioning.provision_tenant")
-	def test_seat_change_updates_linked_subscription(self, provision):
-		doc = self._make_contract(is_signed=1, users=5)
+	def test_plan_summary_reads_as_a_package_or_per_user(self, provision):
+		from frappe.utils import fmt_money
+
+		from ai_saas.saas.activation import plan_summary, plan_users
+
+		cost = frappe.db.get_value("Subscription Plan", TEST_PLAN, "cost")
+		frappe.db.set_value("Subscription Plan", TEST_PLAN, "mz_users_included", 6)
+		package = self._make_contract(is_signed=0)
+		self.assertEqual(plan_summary(package.name),
+		                 f"{TEST_PLAN} — {fmt_money(cost, currency='MZN')}/mês, 6 utilizadores incluídos")
+		self.assertEqual(plan_users(package.name), 6)
+
+		corp = self._make_contract(is_signed=0, plan=CORP_PLAN, users=5, tenant=TEST_SLUG + "-2")
+		self.assertIn("5 utilizadores × ", plan_summary(corp.name))  # noqa: RUF001
+		self.assertIn(fmt_money(5 * 2999, currency="MZN") + "/mês", plan_summary(corp.name))
+		self.assertEqual(plan_users(corp.name), 5)
+
+	@patch("ai_saas.saas.provisioning.provision_tenant")
+	def test_per_user_change_updates_linked_subscription(self, provision):
+		doc = self._make_contract(is_signed=1, plan=CORP_PLAN, users=5)
 		doc.submit()
 		sub = frappe.db.get_value("Contract", doc.name, "mz_linked_subscription")
 
 		doc.reload()
 		doc.mz_users = 8
 		doc.save(ignore_permissions=True)
-		self.assertEqual(frappe.db.get_value("Subscription Plan Detail", {"parent": sub}, "qty"), 7)
-		# The same, single subscription — a seats-only save never re-runs the signature path.
+		self.assertEqual(self._qty(doc.name), 8)
+		# The same, single subscription — a users-only save never re-runs the signature path.
 		self.assertEqual(frappe.db.get_value("Contract", doc.name, "mz_linked_subscription"), sub)
 		self.assertEqual(frappe.db.count("Subscription", {"party": TEST_CUSTOMER}), 1)
 
 	@patch("ai_saas.saas.provisioning.provision_tenant")
-	def test_seat_change_to_zero_refused_on_live_subscription(self, provision):
-		doc = self._make_contract(is_signed=1, users=3)
+	def test_per_user_change_to_zero_refused_on_live_subscription(self, provision):
+		doc = self._make_contract(is_signed=1, plan=CORP_PLAN, users=3)
 		doc.submit()
-		sub = frappe.db.get_value("Contract", doc.name, "mz_linked_subscription")
 
 		doc.reload()
 		doc.mz_users = 0
 		with self.assertRaises(frappe.ValidationError):
 			doc.save(ignore_permissions=True)
-		self.assertEqual(frappe.db.get_value("Subscription Plan Detail", {"parent": sub}, "qty"), 2)
+		self.assertEqual(self._qty(doc.name), 3)
 
 	@patch("ai_saas.saas.provisioning.provision_tenant")
-	def test_plan_and_seat_change_together_hits_b3(self, provision):
-		"""B3 runs first and rolls the whole save back — the seats stay untouched too."""
-		doc = self._make_contract(is_signed=1, users=5)
+	def test_plan_and_users_change_together_hits_b3(self, provision):
+		"""B3 runs first and rolls the whole save back — the quantity stays untouched too."""
+		doc = self._make_contract(is_signed=1, plan=CORP_PLAN, users=5)
 		doc.submit()
-		sub = frappe.db.get_value("Contract", doc.name, "mz_linked_subscription")
 
 		doc.reload()
 		doc.mz_subscription_plan = OTHER_PLAN
 		doc.mz_users = 9
 		with self.assertRaises(frappe.ValidationError):
 			doc.save(ignore_permissions=True)
-		self.assertEqual(frappe.db.get_value("Subscription Plan Detail", {"parent": sub}, "qty"), 4)
+		self.assertEqual(self._qty(doc.name), 5)
 
 	@patch("ai_saas.saas.contract_lifecycle._setup_subscription")
 	@patch("ai_saas.saas.provisioning.provision_tenant")
-	def test_seat_change_on_unsigned_contract_is_free(self, provision, setup_sub):
-		doc = self._make_contract(is_signed=0, users=3)
+	def test_users_change_on_unsigned_contract_is_free(self, provision, setup_sub):
+		doc = self._make_contract(is_signed=0, plan=CORP_PLAN, users=3)
 		doc.submit()
 
 		doc.reload()
@@ -225,22 +256,6 @@ class TestContractLifecycle(FunnelTestCase):
 		doc.save(ignore_permissions=True)
 		self.assertEqual(frappe.db.get_value("Contract", doc.name, "mz_users"), 7)
 		setup_sub.assert_not_called()
-
-	@patch("ai_saas.saas.provisioning.provision_tenant")
-	def test_backfill_patch_stamps_seats_from_subscription(self, provision):
-		from ai_saas.patches.v1 import set_contract_users_from_subscription
-
-		doc = self._make_contract(is_signed=1, users=4)  # 4 seats -> billed qty 3
-		doc.submit()
-		frappe.db.set_value("Contract", doc.name, "mz_users", 0, update_modified=False)
-		unsigned = self._make_contract(is_signed=0)
-		unsigned.submit()
-
-		set_contract_users_from_subscription.execute()
-		# Billing-preserving roundtrip: seats = qty + 1 (the included first user).
-		self.assertEqual(frappe.db.get_value("Contract", doc.name, "mz_users"), 4)
-		# No linked subscription -> left alone (the /activar question decides later).
-		self.assertEqual(frappe.db.get_value("Contract", unsigned.name, "mz_users"), 0)
 
 	# ---- B4: the contract template ---------------------------------------------
 

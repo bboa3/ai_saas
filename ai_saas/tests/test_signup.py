@@ -95,6 +95,30 @@ class TestSignup(FrappeTestCase):
 		self.assertEqual(frappe.db.count("Contract", {"party_name": doc.customer}), contracts)
 
 	@patch("ai_saas.saas.provisioning.provision_tenant")
+	def test_direct_sale_on_per_user_plan_needs_and_carries_users(self, provision):
+		"""Corporativo is billed per user: the desk must say how many, and the number
+		lands on the Contract — the Subscription's quantity at signature."""
+		from ai_saas.tests.helpers import CORP_PLAN
+
+		provision.side_effect = self._fake_provision()
+		doc = frappe.get_doc({
+			"doctype": "MZ Signup", "status": "Started", "current_step": 3,
+			"full_name": "Vendedor Directo", "email": EMAIL, "phone": "+258 84 000 0002",
+			"plan": CORP_PLAN, "company_name": COMPANY, "tax_id": "400765432", "industry": self.industry,
+			"address": "Av. do Trabalho, 123, Bairro Central, Maputo",
+			"subdomain": SLUG, "venda_directa": 1,
+		}).insert(ignore_permissions=True)
+		with patch("ai_saas.api.signup._alert_ops"):
+			self.assertRaisesRegex(frappe.ValidationError, "fatura por utilizador",
+			                       signup.create_account_from_desk, doc.name)
+			doc.reload()
+			self.assertEqual(doc.status, "Started")  # refused before anything was created
+			doc.users = 8
+			doc.save(ignore_permissions=True)
+			result = signup.create_account_from_desk(doc.name)
+		self.assertEqual(cint(frappe.db.get_value("Contract", result["contract"], "mz_users")), 8)
+
+	@patch("ai_saas.saas.provisioning.provision_tenant")
 	def test_direct_sale_failure_marks_failed_and_may_retry(self, provision):
 		"""A crash mid-creation must not leave the signup clickable as if nothing happened:
 		status → Failed (audit trail in `error`), and only a Failed run WITHOUT a contract
@@ -294,48 +318,23 @@ class TestSignup(FrappeTestCase):
 		st = signup._status(r["token"])
 		self.assertEqual(st["fields"]["company_name"], COMPANY)  # token holders get their values back
 
-	# ---- Per-user pricing: seats in the signup -----------------------------------
+	# ---- Package pricing: self-service never asks for users -------------------------
 
-	def test_seats_floor_and_storage(self):
-		from ai_saas.saas.accounts import _validate_step
-		from ai_saas.saas.settings import get_settings
-
-		self.assertEqual(get_settings().minimum_users, 2)  # code default on an unconfigured Single
-
-		values = {"users": 1}
-		with self.assertRaises(frappe.ValidationError):
-			_validate_step(3, values)  # below the self-service floor
-		values = {"users": 1}
-		_validate_step(3, values, minimum_users=1)  # the desk override: Sales may set 1
-		self.assertEqual(values["users"], 1)
-		values = {"users": "4"}
-		_validate_step(3, values)
-		self.assertEqual(values["users"], 4)  # normalised to int
-
+	def test_web_signup_carries_no_users(self):
 		token = self._walk_to_step3()
+		# A page cached from before package pricing still sends `users`: ignored, not refused.
 		signup._update(token, 3, {"subdomain": SLUG, "plan": PLAN, "users": 5, "terms_accepted": 1})
-		self.assertEqual(frappe.db.get_value("MZ Signup", {"resume_token": token}, "users"), 5)
-		st = signup._status(token)
-		self.assertEqual(st["fields"]["users"], 5)  # PUBLIC_FIELDS echo for the resume path
+		self.assertFalse(frappe.db.get_value("MZ Signup", {"resume_token": token}, "users"))
+		self.assertNotIn("users", signup._status(token)["fields"])
 
 	@patch("ai_saas.saas.provisioning.provision_tenant")
-	def test_submit_maps_users_to_contract_seats(self, provision):
+	def test_submit_leaves_package_contract_without_users(self, provision):
 		provision.side_effect = self._fake_provision()
 		token = self._walk_to_step3()
-		signup._update(token, 3, {"subdomain": SLUG, "plan": PLAN, "users": 4, "terms_accepted": 1})
+		frappe.db.set_value("MZ Signup", {"resume_token": token}, "users", 4)  # a legacy in-flight signup
 		signup._submit(token)
 		doc = frappe.get_doc("MZ Signup", {"resume_token": token})
-		self.assertEqual(frappe.db.get_value("Contract", doc.contract, "mz_users"), 4)
-
-	@patch("ai_saas.saas.provisioning.provision_tenant")
-	def test_submit_stamps_floor_when_seats_missing(self, provision):
-		"""A legacy in-flight signup without the field converts at the advertised minimum."""
-		provision.side_effect = self._fake_provision()
-		token = self._walk_to_step3()
-		frappe.db.set_value("MZ Signup", {"resume_token": token}, "users", 0)
-		signup._submit(token)
-		doc = frappe.get_doc("MZ Signup", {"resume_token": token})
-		self.assertEqual(frappe.db.get_value("Contract", doc.contract, "mz_users"), 2)
+		self.assertFalse(frappe.db.get_value("Contract", doc.contract, "mz_users"))
 
 	def test_slug_from_company_is_typeable(self):
 		self.assertEqual(signup.slug_from_company("Farmácia Central, Lda"), "farmacia-central")

@@ -18,7 +18,6 @@ from erpnext_mz.qr_code.qr_generator import _generate_validation_hash, validate_
 from frappe.utils import get_url, now_datetime
 
 from ai_saas.saas.lifecycle_mail import send_lifecycle_email
-from ai_saas.saas.settings import get_settings
 
 DOCTYPE = "Contract"
 
@@ -52,9 +51,51 @@ def cloud_plans():
 	return frappe.get_all(
 		"Subscription Plan",
 		filters={"mz_cloud_plan": 1},
-		fields=["name", "plan_name", "cost", "currency", "billing_interval", "billing_interval_count"],
+		fields=["name", "plan_name", "cost", "currency", "billing_interval", "billing_interval_count",
+		        "mz_users_included"],
 		order_by="cost asc",
 	)
+
+
+def plan_summary(contract_name) -> str:
+	"""The contract's plan as the customer should read it in a message — what it costs
+	and what it includes: "Premium Mensal - MozEconomia Cloud — 4.499,00 MZN/mês,
+	6 utilizadores incluídos"; on a plan billed per user, "… — 5 utilizadores x
+	2.999,00 MZN = 14.995,00 MZN/mês". Just the plan's name when it has no price,
+	'' when the contract has no plan."""
+	from frappe.utils import cint, flt, fmt_money
+
+	c = frappe.db.get_value("Contract", contract_name, ["mz_subscription_plan", "mz_users"], as_dict=True)
+	if not c or not c.mz_subscription_plan:
+		return ""
+	plan = frappe.db.get_value(
+		"Subscription Plan", c.mz_subscription_plan,
+		["plan_name", "cost", "currency", "billing_interval", "mz_per_user", "mz_users_included"], as_dict=True,
+	)
+	if not plan or not flt(plan.cost):
+		return c.mz_subscription_plan
+	name = plan.plan_name or c.mz_subscription_plan
+	per = {"Month": "mês", "Year": "ano"}.get(plan.billing_interval, "período")
+	money = lambda v: fmt_money(v, currency=plan.currency)  # noqa: E731
+	if cint(plan.mz_per_user):
+		users = max(cint(c.mz_users), 1)
+		return f"{name} — {users} utilizador{'es' if users > 1 else ''} × {money(plan.cost)} = {money(flt(plan.cost) * users)}/{per}"  # noqa: RUF001
+	included = f", {cint(plan.mz_users_included)} utilizadores incluídos" if cint(plan.mz_users_included) else ""
+	return f"{name} — {money(plan.cost)}/{per}{included}"
+
+
+def plan_users(contract_name) -> int:
+	"""How many users the contract's plan gives: the package's included users, or the
+	contracted users on a plan billed per user. 0 when unknown."""
+	from frappe.utils import cint
+
+	c = frappe.db.get_value("Contract", contract_name, ["mz_subscription_plan", "mz_users"], as_dict=True)
+	if not c or not c.mz_subscription_plan:
+		return 0
+	plan = frappe.db.get_value(
+		"Subscription Plan", c.mz_subscription_plan, ["mz_per_user", "mz_users_included"], as_dict=True
+	) or frappe._dict()
+	return cint(c.mz_users) if cint(plan.mz_per_user) else cint(plan.mz_users_included)
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +122,16 @@ def get_activation_context(contract_name: str, token: str) -> dict:
 
 	ctx.phase = account_phase(c.name)
 	ctx.plans = cloud_plans()
-	ctx.minimum_users = get_settings().minimum_users
+	# A contract on a plan self-service does not offer (Corporativo, sold directly) is
+	# shown its own plan as a fixed line — there is nothing to choose.
+	ctx.fixed_plan = None
+	plan_name = c.get("mz_subscription_plan")
+	if plan_name and not any(p.name == plan_name for p in ctx.plans):
+		ctx.fixed_plan = frappe.db.get_value(
+			"Subscription Plan", plan_name,
+			["name", "plan_name", "cost", "currency", "billing_interval", "mz_per_user", "mz_users_included"],
+			as_dict=True,
+		)
 	ctx.customer = frappe.db.get_value(
 		"Customer", c.party_name, ["customer_name", "tax_id", "email_id", "mobile_no"], as_dict=True
 	) or frappe._dict(customer_name=c.party_name)
@@ -117,19 +167,20 @@ def activate(contract, token, plan=None, users=None, tax_id=None, address_line1=
              city=None, contact_phone=None, accept_terms=0):
 	"""Guest endpoint behind the page's confirm button. Thin wrapper: rate-limited
 	per contract at the whitelist layer; the work is in _activate so tests call it
-	without a request context."""
+	without a request context. `users` is accepted and ignored: a page cached from
+	before package pricing still sends it."""
 	from ai_saas.api.signup import _limit
 
 	_limit(limit=10, seconds=60)                         # per IP
 	_limit(identity=f"contract:{contract}", limit=10, seconds=60)
 	return _activate(
-		contract, token, plan=plan, users=users, tax_id=tax_id, address_line1=address_line1,
+		contract, token, plan=plan, tax_id=tax_id, address_line1=address_line1,
 		address_line2=address_line2, city=city, contact_phone=contact_phone,
 		accept_terms=frappe.utils.cint(accept_terms),
 	)
 
 
-def _activate(contract_name, token, plan=None, users=None, tax_id=None, address_line1=None,
+def _activate(contract_name, token, plan=None, tax_id=None, address_line1=None,
               address_line2=None, city=None, contact_phone=None, accept_terms=0):
 	if not is_valid_token(contract_name, token):
 		frappe.throw("Ligação de activação inválida ou expirada.", frappe.PermissionError)
@@ -155,18 +206,12 @@ def _activate(contract_name, token, plan=None, users=None, tax_id=None, address_
 	if plan and plan != c.get("mz_subscription_plan"):
 		if c.get("mz_linked_subscription"):
 			frappe.throw("O plano já não pode ser alterado — existe uma subscrição ligada.")
-		if not frappe.db.exists("Subscription Plan", plan):
+		# Only what the page offers: a guest must never move a contract onto a plan
+		# sold directly (or off one — its price was agreed outside this page).
+		offered = {p.name for p in cloud_plans()}
+		if plan not in offered or c.get("mz_subscription_plan") not in offered:
 			frappe.throw("Plano inválido.")
 		c.mz_subscription_plan = plan
-	# Seats mirror the plan rule: correctable here until the Subscription exists.
-	# The same save signs the contract, so _setup_subscription reads the fresh value.
-	if users is not None and frappe.utils.cint(users) != frappe.utils.cint(c.get("mz_users") or 0):
-		if c.get("mz_linked_subscription"):
-			frappe.throw("O número de utilizadores já não pode ser alterado aqui — existe uma subscrição ligada.")
-		floor = get_settings().minimum_users
-		if frappe.utils.cint(users) < floor:
-			frappe.throw(f"O plano é por utilizador — mínimo {floor} utilizador(es).")
-		c.mz_users = frappe.utils.cint(users)
 	if tax_id is not None and tax_id.strip():
 		from ai_saas.api.signup import NUIT_RE
 

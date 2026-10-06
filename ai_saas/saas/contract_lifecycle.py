@@ -11,6 +11,19 @@ from ai_saas.saas.settings import get_settings
 # the signature and the site's status, and the Opportunity records the sales stage.
 
 
+def validate_contract_users(doc, method=None):
+	"""A plan billed per user (Corporativo) has no price without a user count: an empty
+	field would bill one user in silence. Refused on every save and on submit; a
+	package plan needs no number. Also called from on_contract_signed, because
+	validate does not run on an update after submit."""
+	if doc.party_type != "Customer":
+		return
+	if is_per_user_plan(doc.get("mz_subscription_plan")) and cint(doc.get("mz_users")) < 1:
+		frappe.throw(
+			"Este plano fatura por utilizador — indique o Número de Utilizadores antes de guardar o contrato."
+		)
+
+
 def on_contract_submitted(doc, method=None):
 	"""Contract on_submit: provision the tenant site regardless of signature.
 
@@ -47,6 +60,7 @@ def on_contract_signed(doc, method=None):
 	"""
 	if doc.party_type != "Customer":
 		return
+	validate_contract_users(doc)
 
 	before = doc.get_doc_before_save()
 
@@ -61,13 +75,14 @@ def on_contract_signed(doc, method=None):
 			"Cancele a subscrição ligada antes de mudar o plano."
 		)
 
-	# Seats follow the contract: mz_users is editable after submit, and a change on a
-	# live subscription mirrors into its plan-row qty. This must run BEFORE the
+	# Per-user plans only (Corporativo): mz_users is editable after submit, and a change
+	# on a live subscription mirrors into its plan-row qty. This must run BEFORE the
 	# is_signed early-returns below — an already-signed contract never gets past them.
 	if (
 		before is not None
 		and doc.get("mz_linked_subscription")
 		and cint(before.get("mz_users") or 0) != cint(doc.get("mz_users") or 0)
+		and is_per_user_plan(doc.get("mz_subscription_plan"))
 	):
 		_sync_subscription_seats(doc)
 
@@ -140,23 +155,27 @@ def _maybe_provision_tenant(doc):
 		)
 
 
-def _billed_qty(users):
-	"""Per-user pricing with the first user included: N contracted seats bill N-1
-	units of the plan cost, never below 1. Two users cost one plan (the entry
-	price), each further user adds one plan cost. An empty field (desk/legacy
-	contract) bills 1, exactly the pre-seats flat behaviour."""
-	return max(cint(users) - 1, 1)
+def is_per_user_plan(plan_name) -> bool:
+	"""Subscription Plan.mz_per_user: the plan's cost is a per-user rate (Corporativo).
+	Every other plan is a package — its price already contains its users."""
+	return bool(plan_name) and bool(cint(frappe.db.get_value("Subscription Plan", plan_name, "mz_per_user")))
+
+
+def _billed_qty(plan_name, users):
+	"""A package plan bills one plan cost, whatever the contract says about users.
+	A per-user plan bills one plan cost per contracted user, never below 1."""
+	return max(cint(users), 1) if is_per_user_plan(plan_name) else 1
 
 
 def _sync_subscription_seats(doc):
-	"""Contract.mz_users is the contracted-seats source; the linked Subscription's
-	plan row mirrors _billed_qty(mz_users). Native invoice generation reads qty at
+	"""Per-user plans: Contract.mz_users is the contracted-users source and the linked
+	Subscription's plan row mirrors it. Native invoice generation reads qty at
 	generation time, so the change lands on the next invoice ERPNext generates — no
 	proration. (On a period-start day, a change saved before the daily job lands on
 	that day's invoice; after it, on the following period's.)"""
 	if cint(doc.get("mz_users")) < 1:
-		frappe.throw("Indique pelo menos 1 utilizador — a subscrição factura por utilizador.")
-	qty = _billed_qty(doc.get("mz_users"))
+		frappe.throw("Indique pelo menos 1 utilizador — a subscrição fatura por utilizador.")
+	qty = _billed_qty(doc.get("mz_subscription_plan"), doc.get("mz_users"))
 	sub_name = doc.get("mz_linked_subscription")
 	if not frappe.db.exists("Subscription", sub_name):
 		return
@@ -207,11 +226,8 @@ def _setup_subscription(doc):
 
 	billing_start = compute_billing_start(doc)
 
-	# Per-user pricing with the first user included: qty = mz_users - 1, floor 1
-	# (see _billed_qty). An empty field — desk/legacy contracts — also bills 1,
-	# the pre-seats flat behaviour; the self-service minimum is a form rule,
-	# enforced before the field lands here.
-	qty = _billed_qty(doc.get("mz_users"))
+	# Package plans bill 1; a per-user plan bills its contracted users (see _billed_qty).
+	qty = _billed_qty(plan_name, doc.get("mz_users"))
 
 	sub = frappe.get_doc({
 		"doctype": "Subscription",
@@ -233,11 +249,6 @@ def _setup_subscription(doc):
 	sub.insert(ignore_permissions=True)
 
 	linked_values = {"mz_linked_subscription": sub.name, "mz_billing_start": billing_start}
-	if not cint(doc.get("mz_users")):
-		# Normalise an empty seats field to what the billed qty entitles (billed + 1,
-		# the included first user); a value Sales typed is never overwritten.
-		linked_values["mz_users"] = qty + 1
-		doc.mz_users = qty + 1
 	frappe.db.set_value("Contract", doc.name, linked_values, update_modified=False)
 	doc.mz_linked_subscription = sub.name
 	doc.mz_billing_start = billing_start

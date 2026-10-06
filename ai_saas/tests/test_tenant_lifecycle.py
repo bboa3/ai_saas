@@ -403,7 +403,7 @@ class TestLifecycleMail(TestTenantLifecycle):
 		doc, _prov = self._make_trial(start_date=add_days(nowdate(), -1))
 		mail = self._ctx_and_send("suspended", doc, cause="overdue", invoice="ACC-SINV-2026-99999")
 		self.assertIn("ACC-SINV-2026-99999", mail["message"])
-		self.assertIn("regularize a factura", mail["message"])
+		self.assertIn("regularize a fatura", mail["message"])
 		self.assertNotIn("/activar", mail["message"])
 
 	def test_reactivated_and_archived(self):

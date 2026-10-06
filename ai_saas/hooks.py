@@ -20,6 +20,7 @@ override_doctype_class = {
 
 doc_events = {
 	"Contract": {
+		"validate": "ai_saas.saas.contract_lifecycle.validate_contract_users",
 		"on_submit": "ai_saas.saas.contract_lifecycle.on_contract_submitted",
 		"on_update_after_submit": "ai_saas.saas.contract_lifecycle.on_contract_signed",
 		"on_cancel": "ai_saas.saas.contract_lifecycle.on_contract_cancel",

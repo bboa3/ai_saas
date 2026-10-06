@@ -4,7 +4,7 @@
 
 {% block head_include %}
 <link rel="stylesheet" href="/registo/index.css?v={{ asset_version or 0 }}">
-<meta name="description" content="Receba um aviso gratuito alguns dias antes de cada obrigação fiscal em Moçambique: IVA, IRPS, INSS, comunicação mensal de facturas.">
+<meta name="description" content="Receba um aviso gratuito alguns dias antes de cada obrigação fiscal em Moçambique: IVA, IRPS, INSS, comunicação mensal de faturas.">
 {% if meta_pixel_id %}
 <script>
 !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
@@ -63,9 +63,9 @@ fbq('init', {{ meta_pixel_id | tojson }}); fbq('track', 'PageView');
 
   <div class="reg__done" id="alert-done" hidden>
     <h1>Está subscrito</h1>
-    <p class="reg__lead">O primeiro aviso chega antes do próximo prazo. Se o seu sector tiver um guia prático de facturação, recebe-o hoje no email indicado.</p>
+    <p class="reg__lead">O primeiro aviso chega antes do próximo prazo. Se o seu sector tiver um guia prático de faturação, recebe-o hoje no email indicado.</p>
   </div>
 
-  <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
+  <p class="reg__note">MozEconomia Cloud — software de faturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
 </div>
 {% endblock %}

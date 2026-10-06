@@ -82,9 +82,9 @@ class TestMessaging(FunnelTestCase):
 			"Notification", filters={"name": ("like", "AI SaaS - Trial - %")},
 			fields=["name", "event", "date_changed", "days_in_advance", "condition", "document_type"],
 		)
-		self.assertEqual(sorted(r.days_in_advance for r in rows), [0, 1, 2, 3, 7])  # 2 = 'Primeira factura' (Days After creation)
+		self.assertEqual(sorted(r.days_in_advance for r in rows), [0, 1, 2, 3, 7])  # 2 = 'Primeira fatura' (Days After creation)
 		for r in rows:
-			expected = ("Contract", "Days After", "creation") if "Primeira factura" in r.name else ("Contract", "Days Before", "start_date")
+			expected = ("Contract", "Days After", "creation") if "Primeira fatura" in r.name else ("Contract", "Days Before", "start_date")
 			self.assertEqual((r.document_type, r.event, r.date_changed), expected, r.name)
 			self.assertNotIn("mz_account_phase", r.condition)  # the phase is derived, never a field
 			self.assertIn("not doc.is_signed", r.condition)
@@ -267,7 +267,7 @@ class TestMessaging(FunnelTestCase):
 
 	def test_trial_first_invoice_email_and_sms_today(self):
 		from frappe.email.doctype.notification.notification import get_context
-		first = frappe.get_doc("Notification", "AI SaaS - Trial - Primeira factura")
+		first = frappe.get_doc("Notification", "AI SaaS - Trial - Primeira fatura")
 		self.assertEqual((first.event, first.days_in_advance, first.date_changed), ("Days After", 2, "creation"))
 		sms = frappe.get_doc("Notification", "AI SaaS - SMS Trial Hoje")
 		self.assertEqual((sms.channel, sms.event, sms.days_in_advance, sms.date_changed), ("SMS", "Days Before", 0, "start_date"))
@@ -365,7 +365,7 @@ class TestCommunicationLanguage(FrappeTestCase):
 			if r.name in self.BILLING:
 				continue
 			text = (r.subject or "") + (r.message or "")
-			self.assertNotRegex(text, r"\b[Ff]atura", r.name)  # Mozambican spelling
+			self.assertNotRegex(text, r"\b[Ff]actur", r.name)  # house spelling: fatura, faturação
 			self.assertNotIn("{{ doc.party_name }},", text, r.name)  # never greet the company
 			if r.document_type in ("Contract", "MZ Signup") and r.channel == "Email":
 				self.assertIn("mz_greeting(", r.message, r.name)

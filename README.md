@@ -65,7 +65,7 @@ stage to the Opportunity.
 | `contract` | Link: Contract | Associated contract |
 | `outstanding_amount` | Currency | Total outstanding |
 | `overdue_since` | Date | Invoice due date |
-| `origin` | Select | `Facturação` (engine) / `Manual` (Contract button) / `Pedido do Cliente` (`/reactivar`) |
+| `origin` | Select | `Faturação` (engine) / `Manual` (Contract button) / `Pedido do Cliente` (`/reactivar`) |
 | `review_status` | Select | `Pending Review` / `Suspend` / `Reactivate` / `Deactivate` |
 | `assigned_to` | Link: User | Commercial staff responsible |
 | `notes` | Text | Internal notes |
@@ -87,6 +87,7 @@ Defined in `install.py` (`_sync_custom_fields`, applied on `after_install` / `af
 |---|---|---|
 | `mz_saas_tab` | Tab Break | "MozEconomia Cloud" tab |
 | `mz_subscription_plan` | Link: Subscription Plan | Plan to bill. **Editable after submit** until a Subscription is linked (the customer may correct it at activation) |
+| `mz_users` | Int | Contracted users — **only for a plan billed per user** (Corporativo, `Subscription Plan.mz_per_user`): mirrored into the Subscription's quantity. A package plan ignores it; its users are `Subscription Plan.mz_users_included` |
 | `mz_tenant` | Data | Customer subdomain slug — the user types only the prefix (e.g. `boa-construtora`) |
 | `mz_tenant_url` | Data (read-only) | Full access domain: `<slug>.erp.mozeconomia.co.mz` |
 | `contact_email` / `mz_contact_name` / `mz_contact_mobile` | read-only `fetch_from` | Mirrors of the Customer (`email_id`, `customer_primary_contact`, `mobile_no`) — the primary **Contact** is the source; nothing writes these directly |
@@ -237,67 +238,6 @@ email, Opportunity born at `Cloud - Account Created` — so the G1 nurture never
 and removes the account from `live_trials()` (no auto-suspend at `start_date`, no trial slot,
 no probe); **dunning and overdue suspension stay on** — billing is billing. Suspension of a
 direct account is a human decision through `MZ Overdue Review`.
-
-For a direct account whose site **already exists** (a holding's own instance, a yearly deal paid
-outside), the signup path would try to build a new site — use instead:
-
-```bash
-bench --site <site> execute ai_saas.saas.legacy_migration.create_account \
-  --kwargs "{'customer_name': 'Kaleny Holding, S.A.', 'site': 'erp.kalenyholding.com',
-             'plan': 'Profissional Mensal - MozEconomia Cloud', 'start_date': '2026-09-07', 'dry_run': 1}"
-```
-
-which registers the provisioning row first (nothing re-provisions, no delivery email), submits a
-signed `mz_direct` Contract and lets the normal hook create the Subscription — billing starts at
-`max(start_date, today)`, never back-dated. Without `plan`: a signed, engine-silent account (the
-holding/partner shape). And to bring an **existing signed account** (Customer + Contract +
-Subscription + hand-made site) into the lifecycle without re-creating anything:
-
-```bash
-bench --site <site> execute ai_saas.saas.legacy_migration.activate \
-  --kwargs "{'contracts': '@sheet.csv', 'dry_run': 1}"   # or 'CON-...,CON-...'
-```
-
-per contract: provisioning row (Active), `mz_linked_subscription` + `mz_billing_start` from the
-existing Subscription, `mz_direct = 1`, Customer primaries, Opportunity → Activated/Converted.
-Hooks never run (no second Subscription, no invoice today, no customer email); a contract with
-zero non-cancelled Subscriptions is registered unlinked, more than one is skipped for a human.
-
-## Winding down a legacy account
-
-`archive_now` archives an already-registered account today, in one email (temporary tooling,
-same module as the inventory):
-
-```bash
-bench --site <site> execute ai_saas.saas.legacy_migration.archive_now \
-  --kwargs "{'items': '@archive.csv', 'dry_run': 1}"        # then 0; 'quiet': 1 = no emails, no campaign
-```
-
-Per contract: `suspend(notify=False)` when still Active (only the gate `archive()` requires),
-then `archive()` — backup, verify, drop-site, Opportunity `Cloud - Closed`/Lost with the G3
-clock stamped. The customer gets "Conta Arquivada" that day and the `Conta Encerrada` campaign
-at +3/+30 — which reaches **any** account shape: the templates resolve the Contract through
-`crm.find_contract` (the derived mirror of `find_opportunity`), never through the signup.
-
-## Inventory of legacy accounts
-
-Before touching accounts the old funnel created, look at them:
-
-```bash
-bench --site erp.mozeconomia.co.mz execute ai_saas.saas.legacy_migration.inventory
-```
-
-Walks every tenant site directory (`sites/`, `archived/sites/`), asks each live site who it
-belongs to and how it is used (`erpnext_mz.utils.tenant_usage.identity` — Company, NUIT, its
-System Managers, invoices, logins, size), and matches the control site's Customers, Contracts,
-Subscriptions, Opportunities and Leads to it by site name, NUIT, email, mobile and company name —
-each match labelled with the key that produced it, conflicts listed, never guessed. The result
-(`tenant_inventory_<date>.xlsx`: sheets `sites`, `control_only`, `summary`) is attached to
-**MZ SaaS Settings** for download; the `class` column (`paying`, `debtor`, `cancelled_paid_up`, `used_unsigned`,
-`never_used`, `archived_by_hand`, `unmatched_site`, `unclassified`) is a hint for reading, not a
-decision. Read-only apart from that File; re-running replaces the day's file. Actions come after.
-
----
 
 ## Scheduled Tasks
 

@@ -66,7 +66,8 @@ class TestBillingMonitor(FrappeTestCase):
 			billing_monitor._get_overdue_invoices()
 
 	def test_prebilling_email_prices_cost_times_qty(self):
-		"""Per-user pricing: the 'Valor Estimado' is plan cost x the plan row's qty."""
+		"""The 'Valor Estimado' is plan cost x the plan row's qty (above 1 only on a
+		per-user plan, or on a subscription from before package pricing)."""
 		from ai_saas.saas.contract_lifecycle import _get_company
 
 		lead_days = billing_monitor.get_settings().prebilling_reminder_days
@@ -97,11 +98,14 @@ class TestBillingMonitor(FrappeTestCase):
 			        if c.kwargs.get("reference_name") == self.contract.name]
 			self.assertEqual(len(sent), 1)
 			message = sent[0].kwargs["message"]
-			# qty 5 with no seats on the contract -> 6 seats shown (billed + the included first).
-			self.assertIn("6 utilizadores (1.º incluído): 5", message)
+			# A package plan at quantity 5 (a subscription from before package pricing):
+			# the quantity is shown, but never called "utilizadores".
+			self.assertIn("5 × ", message)  # noqa: RUF001
+			self.assertNotIn("utilizadores", message)
 			from frappe.utils.formatters import format_value
 
-			total = format_value(5 * 2999, {"fieldtype": "Currency", "currency": "MZN"})
+			cost = frappe.db.get_value("Subscription Plan", TEST_PLAN, "cost")  # the live price, whatever it is
+			total = format_value(5 * cost, {"fieldtype": "Currency", "currency": "MZN"})
 			self.assertIn(total, message)
 		finally:
 			frappe.db.set_value("Contract", self.contract.name, "mz_linked_subscription", FAKE_SUB,

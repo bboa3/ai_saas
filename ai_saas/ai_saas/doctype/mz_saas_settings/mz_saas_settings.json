@@ -18,7 +18,6 @@
   "section_billing",
   "prebilling_reminder_days",
   "overdue_followup_days",
-  "minimum_users",
   "section_alerts",
   "ops_alert_recipients",
   "default_sales_user",
@@ -101,12 +100,12 @@
   {
    "fieldname": "section_billing",
    "fieldtype": "Section Break",
-   "label": "Facturação"
+   "label": "Faturação"
   },
   {
    "fieldname": "prebilling_reminder_days",
    "fieldtype": "Int",
-   "label": "Aviso Pré-Facturação (dias antes)",
+   "label": "Aviso Pré-Faturação (dias antes)",
    "default": "4"
   },
   {
@@ -114,13 +113,6 @@
    "fieldtype": "Int",
    "label": "Follow-up Comercial (dias de atraso)",
    "default": "7"
-  },
-  {
-   "fieldname": "minimum_users",
-   "fieldtype": "Int",
-   "label": "Mínimo de Utilizadores (auto-serviço)",
-   "default": "2",
-   "description": "Piso de postos nos formulários de auto-serviço (/registo e /activar). No desk a equipa comercial pode definir qualquer valor ≥ 1."
   },
   {
    "fieldname": "section_alerts",

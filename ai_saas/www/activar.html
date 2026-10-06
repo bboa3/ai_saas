@@ -37,6 +37,16 @@
 
     <div id="act-form">
       <p class="reg__section">Seu Plano</p>
+      {% if fixed_plan %}
+      {# Sold directly (Corporativo): the plan was agreed outside this page — shown, never chosen. #}
+      {% set fp_cost = frappe.format_value(fixed_plan.cost, {"fieldtype": "Currency", "currency": fixed_plan.currency}) %}
+      {% set fp_per = "mês" if fixed_plan.billing_interval == "Month" else "ano" %}
+      <div class="reg__plan-pill" id="act-plan-pill">
+        <span id="act-plan-label">{{ fixed_plan.plan_name or fixed_plan.name }}
+          {% if fixed_plan.mz_per_user %}{% set fp_users = [contract.mz_users or 1, 1] | max %}— {{ fp_users }} utilizador{{ "es" if fp_users > 1 else "" }} × {{ fp_cost }} = {{ frappe.format_value(fixed_plan.cost * fp_users, {"fieldtype": "Currency", "currency": fixed_plan.currency}) }}/{{ fp_per }}
+          {% else %}{{ fp_cost }}/{{ fp_per }}{% if fixed_plan.mz_users_included %} · {{ fixed_plan.mz_users_included }} utilizadores{% endif %}{% endif %}</span>
+      </div>
+      {% else %}
       <div class="reg__plan-pill" id="act-plan-pill">
         <span id="act-plan-label"></span>
         <button type="button" class="reg__link" id="act-plan-change" aria-expanded="false"
@@ -47,21 +57,16 @@
         <label class="reg__choice">
           <span><input type="radio" name="plan" value="{{ p.name }}"
             data-label="{{ p.plan_name or p.name }}"
-            data-cost="{{ p.cost }}" data-currency="{{ p.currency }}" data-interval="{{ p.billing_interval }}"
-            data-price="{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ "mês" if p.billing_interval == "Month" else "ano" }} por utilizador · 1.º incluído"
+            data-price="{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ "mês" if p.billing_interval == "Month" else "ano" }}{% if p.mz_users_included %} · {{ p.mz_users_included }} utilizadores{% endif %}"
             {% if p.name == contract.mz_subscription_plan %}checked{% endif %}> {{ p.plan_name or p.name }}</span>
-          <span class="reg__price">{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ "mês" if p.billing_interval == "Month" else "ano" }} por utilizador · 1.º incluído</span>
+          <span class="reg__price">{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ "mês" if p.billing_interval == "Month" else "ano" }}{% if p.mz_users_included %} · {{ p.mz_users_included }} utilizadores{% endif %}</span>
         </label>
         {% endfor %}
       </div>
-
-      <label for="act-users" class="reg__section" style="display:block">Utilizadores</label>
-      <input id="act-users" name="users" type="number" inputmode="numeric" step="1"
-        min="{{ minimum_users }}" value="{{ contract.mz_users or minimum_users }}">
-      <div class="reg__domain" id="act-plan-total" aria-live="polite"></div>
+      {% endif %}
 
       <button class="reg__btn" id="btn-activate">Assinar e activar a minha conta</button>
-      <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
+      <p class="reg__note">MozEconomia Cloud — software de faturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
     </div>
 
     <div class="reg__done" id="act-done" hidden>
@@ -97,32 +102,23 @@
   }
 
   // The plan reads as a decision already made — one line, changed only if the customer asks.
-  function paintPlan() {
-    var r = document.querySelector("#act-plan-choices input:checked");
-    $("act-plan-label").textContent = r ? r.dataset.label + " " + r.dataset.price : "—";
-    // Per-user pricing with the first user included: N seats bill N-1 plan costs (min 1).
-    var users = parseInt($("act-users").value, 10) || 0;
-    var cost = r ? parseFloat(r.dataset.cost) : 0;
-    var out = $("act-plan-total");
-    if (!r || !cost || users < 1) { out.textContent = ""; return; }
-    var billed = Math.max(users - 1, 1);
-    var per = (r.dataset.currency || "MZN") + "/" + (r.dataset.interval === "Month" ? "mês" : "ano");
-    var fmt = function (n) { return n.toLocaleString("pt-PT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
-    out.textContent = users > 1
-      ? users + " utilizadores (1.º incluído): " + billed + " × " + fmt(cost) + " = " + fmt(cost * billed) + " " + per
-      : "1 utilizador = " + fmt(cost) + " " + per;
+  // (No choices at all when the plan was sold directly: the line is rendered by the server.)
+  if (choices) {
+    var paintPlan = function () {
+      var r = document.querySelector("#act-plan-choices input:checked");
+      $("act-plan-label").textContent = r ? r.dataset.label + " " + r.dataset.price : "—";
+    };
+    var openChoices = function (open) {
+      choices.hidden = !open;
+      var link = $("act-plan-change");
+      link.setAttribute("aria-expanded", String(open));
+      link.textContent = open ? "fechar" : "alterar";
+    };
+    paintPlan();
+    $("act-plan-change").addEventListener("click", function () { openChoices(choices.hidden); });
+    // Picking a plan is the end of the question: the list closes on the choice, as on /registo.
+    choices.addEventListener("change", function () { paintPlan(); openChoices(false); });
   }
-  paintPlan();
-  $("act-users").addEventListener("input", paintPlan);
-  function openChoices(open) {
-    choices.hidden = !open;
-    var link = $("act-plan-change");
-    link.setAttribute("aria-expanded", String(open));
-    link.textContent = open ? "fechar" : "alterar";
-  }
-  $("act-plan-change").addEventListener("click", function () { openChoices(choices.hidden); });
-  // Picking a plan is the end of the question: the list closes on the choice, as on /registo.
-  choices.addEventListener("change", function () { paintPlan(); openChoices(false); });
 
   btn.addEventListener("click", function () {
     btn.disabled = true; errBox().classList.remove("show");
@@ -135,7 +131,6 @@
         contract: {{ contract.name | tojson }},
         token: {{ token | tojson }},
         plan: plan ? plan.value : null,
-        users: parseInt($("act-users").value, 10) || null,
         accept_terms: 1
       },
       callback: function (r) {
@@ -144,7 +139,7 @@
         $("act-form").hidden = true;
         $("act-done").hidden = false;
         var when = m.billing_start_display || m.billing_start;
-        if (when) $("act-billing").textContent = "A primeira factura é emitida em " + when + ".";
+        if (when) $("act-billing").textContent = "A primeira fatura é emitida em " + when + ".";
         window.scrollTo(0, 0);
       },
       error: function (r) {

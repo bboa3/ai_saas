@@ -60,13 +60,13 @@
   {
    "fieldname": "invoice_count",
    "fieldtype": "Int",
-   "label": "Facturas Emitidas",
+   "label": "Faturas Emitidas",
    "in_list_view": 1
   },
   {
    "fieldname": "first_invoice_date",
    "fieldtype": "Date",
-   "label": "Primeira Factura"
+   "label": "Primeira Fatura"
   },
   {
    "fieldname": "user_count",
@@ -88,20 +88,20 @@
    "fieldname": "invoice_days_7d",
    "fieldtype": "Int",
    "read_only": 1,
-   "label": "Dias com facturas (7d)",
+   "label": "Dias com faturas (7d)",
    "in_list_view": 1
   },
   {
    "fieldname": "invoice_days_prev_7d",
    "fieldtype": "Int",
    "read_only": 1,
-   "label": "Dias com facturas (7d anteriores)"
+   "label": "Dias com faturas (7d anteriores)"
   },
   {
    "fieldname": "invoice_count_30d",
    "fieldtype": "Int",
    "read_only": 1,
-   "label": "Facturas (30d)"
+   "label": "Faturas (30d)"
   },
   {
    "fieldname": "column_break_2",

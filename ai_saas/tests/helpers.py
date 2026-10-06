@@ -9,6 +9,8 @@ from frappe.utils import add_days, nowdate
 TEST_PLAN = "Premium Mensal - MozEconomia Cloud"
 OTHER_PLAN = "Premium Anual - MozEconomia Cloud"
 BASIC_PLAN = "_Test Basico - MozEconomia Cloud"
+# Billed per user and sold directly: never offered by self-service.
+CORP_PLAN = "_Test Corporativo - MozEconomia Cloud"
 TEST_ITEM = "_Test MZ Cloud Plan Item"
 _ITEM = TEST_ITEM
 
@@ -21,8 +23,9 @@ def _root(doctype, parent_field):
 
 
 def ensure_test_plan():
-	"""Create the two plans self-service offers when the site has none, with a test Item."""
-	if all(frappe.db.exists("Subscription Plan", n) for n in (TEST_PLAN, OTHER_PLAN, BASIC_PLAN)):
+	"""Create the two plans self-service offers when the site has none, with a test Item,
+	plus a basic and a per-user (Corporativo) plan self-service never shows."""
+	if all(frappe.db.exists("Subscription Plan", n) for n in (TEST_PLAN, OTHER_PLAN, BASIC_PLAN, CORP_PLAN)):
 		return
 	if not frappe.db.exists("Item", _ITEM):
 		frappe.get_doc({
@@ -30,12 +33,17 @@ def ensure_test_plan():
 			"item_group": _root("Item Group", "parent_item_group"),
 			"stock_uom": frappe.db.get_value("UOM", {}, "name"),
 		}).insert(ignore_permissions=True)
-	for name, cost, interval, cloud in ((TEST_PLAN, 2999, "Month", 1), (OTHER_PLAN, 29990, "Year", 1), (BASIC_PLAN, 999, "Month", 0)):
+	plans = (
+		(TEST_PLAN, 2999, "Month", 1, 6, 0), (OTHER_PLAN, 29990, "Year", 1, 6, 0),
+		(BASIC_PLAN, 999, "Month", 0, 2, 0), (CORP_PLAN, 2999, "Month", 0, 0, 1),
+	)
+	for name, cost, interval, cloud, users, per_user in plans:
 		if not frappe.db.exists("Subscription Plan", name):
 			frappe.get_doc({
 				"doctype": "Subscription Plan", "plan_name": name, "item": _ITEM, "price_determination": "Fixed Rate",
 				"cost": cost, "currency": "MZN", "billing_interval": interval, "billing_interval_count": 1,
-				"mz_cloud_plan": cloud,  # the basic test plan must never show on /registo of a real site
+				"mz_cloud_plan": cloud,  # the test-only plans must never show on /registo of a real site
+				"mz_users_included": users, "mz_per_user": per_user,
 			}).insert(ignore_permissions=True)
 	frappe.db.commit()
 

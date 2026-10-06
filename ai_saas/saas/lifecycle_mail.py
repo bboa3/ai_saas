@@ -48,7 +48,7 @@ def send_lifecycle_email(kind: str, contract_name: str, **extra) -> bool:
 
 
 def build_context(contract_name: str, **extra) -> dict:
-	from ai_saas.saas.activation import get_activation_url, get_reactivation_url
+	from ai_saas.saas.activation import get_activation_url, get_reactivation_url, plan_summary
 	from ai_saas.saas.provisioning import get_booking_url
 	from ai_saas.utils.jinja import mz_first_name, mz_greeting, mz_signature
 
@@ -78,6 +78,7 @@ def build_context(contract_name: str, **extra) -> dict:
 		"is_trial": is_trial,
 		"trial_end": formatdate(contract.start_date) if contract.start_date else "",
 		"plan": contract.mz_subscription_plan or "",
+		"plan_summary": plan_summary(contract_name),
 		"billing_start": formatdate(contract.mz_billing_start) if contract.mz_billing_start else "",
 		"activation_url": get_activation_url(contract_name) if is_trial else "",
 		"reactivation_url": get_reactivation_url(contract_name),

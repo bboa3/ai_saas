@@ -89,7 +89,7 @@ def reactivate(contract_name, new_start_date=None, force=False, notify=True):
 	is_trial = not contract.is_signed
 	if not is_trial and not force and _has_overdue_invoice(contract_name):
 		frappe.throw(
-			"Há facturas em atraso ligadas a este contrato — o motor voltaria a suspender amanhã. "
+			"Há faturas em atraso ligadas a este contrato — o motor voltaria a suspender amanhã. "
 			"Regularize a dívida, ou reactive a partir da fila de revisão (decisão explícita)."
 		)
 	if is_trial and getdate(contract.start_date) <= getdate(nowdate()) and not new_start_date:
@@ -199,13 +199,13 @@ def process_lifecycle():
 	)
 	for inv in overdue:
 		_report(
-			f"suspender (factura {inv.name} vencida em {inv.due_date}, {inv.outstanding_amount} em dívida): {inv.contract}",
+			f"suspender (fatura {inv.name} vencida em {inv.due_date}, {inv.outstanding_amount} em dívida): {inv.contract}",
 			settings.auto_suspend,
 		)
 		if settings.auto_suspend:
 			_attempt(actions, inv.contract, lambda: suspend(
 				inv.contract,
-				reason=f"Factura {inv.name} não paga {settings.overdue_days_to_suspend} dias após o vencimento",
+				reason=f"Fatura {inv.name} não paga {settings.overdue_days_to_suspend} dias após o vencimento",
 				cause="overdue",
 				invoice=inv.name,
 			))

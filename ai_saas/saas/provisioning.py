@@ -76,19 +76,23 @@ def available_apps() -> list:
 
 
 # Apps a segment may list but only a paid tier gets (decision 2026-08-28: every segment
-# has hrms, installed only on Profissional / Premium plans). The tier is the word the
+# has hrms, installed only from Profissional up). The tier is the word the
 # Subscription Plan name starts with ("Premium Mensal - MozEconomia Cloud" → Premium).
-PLAN_TIERS = ("Básico", "Profissional", "Premium")
-PLAN_GATED_APPS = {"hrms": ("Profissional", "Premium")}
+PLAN_TIERS = ("Básico", "Profissional", "Premium", "Corporativo")
+PLAN_GATED_APPS = {"hrms": ("Profissional", "Premium", "Corporativo")}
+# What each package's price includes (pricing of 2026-10-05) — the seed for
+# Subscription Plan.mz_users_included; Corporativo is billed per user and has none.
+PLAN_TIER_USERS = {"Básico": 2, "Profissional": 4, "Premium": 6}
 
 
 def plan_tier(plan=None) -> str:
-	"""'Básico' / 'Profissional' / 'Premium' — the first tier word found anywhere in the
-	plan name, accent-insensitive ("_Test Basico - …" → Básico); '' when none (fail-closed:
-	an unknown tier gets no gated app)."""
+	"""'Básico' / 'Profissional' / 'Premium' / 'Corporativo' — the first tier word found
+	anywhere in the plan name, accent-insensitive ("_Test Basico - …" → Básico); '' when
+	none (fail-closed: an unknown tier gets no gated app)."""
 	folded = (plan or "").lower().replace("á", "a")
-	m = re.search(r"\b(basico|profissional|premium)\b", folded)
-	return {"basico": "Básico", "profissional": "Profissional", "premium": "Premium"}[m.group(1)] if m else ""
+	m = re.search(r"\b(basico|profissional|premium|corporativo)\b", folded)
+	tiers = {"basico": "Básico", "profissional": "Profissional", "premium": "Premium", "corporativo": "Corporativo"}
+	return tiers[m.group(1)] if m else ""
 
 
 def apps_for_segment(segment=None, plan=None, domain=None) -> list:
@@ -892,7 +896,7 @@ def _handle_failure(prov, error_message: str) -> None:
 
 def _welcome_email_context(prov, reset_link: str) -> dict:
 	"""Context the delivery Email Template renders with (C2)."""
-	from ai_saas.saas.activation import get_activation_url
+	from ai_saas.saas.activation import get_activation_url, plan_summary
 	from ai_saas.utils.jinja import mz_first_name, mz_greeting, mz_signature
 
 	contract = frappe.db.get_value(
@@ -911,6 +915,7 @@ def _welcome_email_context(prov, reset_link: str) -> dict:
 		"is_signed": bool(contract.get("is_signed")),
 		"trial_end": frappe.utils.formatdate(contract.get("start_date")) if contract.get("start_date") else "",
 		"plan": contract.get("mz_subscription_plan") or "",
+		"plan_summary": plan_summary(prov.contract),
 		"activation_url": get_activation_url(prov.contract),
 		"booking_url": get_booking_url(),
 	}

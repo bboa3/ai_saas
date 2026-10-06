@@ -43,19 +43,19 @@ def _send_prebilling_reminders():
 		contract = frappe.db.get_value(
 			"Contract",
 			{"mz_linked_subscription": sub.name},
-			["name", "contact_email", "mz_users"],
+			["name", "contact_email"],
 			as_dict=True,
 		)
 		if not contract or not contract.contact_email:
 			continue
 
-		# Resolve plan details for the estimated amount. The plan cost is a per-user
-		# rate (per-user pricing): the invoice total is cost x the plan row's qty.
+		# Resolve plan details for the estimated amount: the invoice total is cost x the
+		# plan row's qty (1 for a package; the contracted users on a per-user plan).
 		plan_row = frappe.db.get_value(
 			"Subscription Plan Detail", {"parent": sub.name}, ["plan", "qty"], as_dict=True
 		)
 		plan = frappe.db.get_value(
-			"Subscription Plan", plan_row.plan, ["plan_name", "cost", "currency"], as_dict=True
+			"Subscription Plan", plan_row.plan, ["plan_name", "cost", "currency", "mz_per_user"], as_dict=True
 		) if plan_row else None
 		qty = (cint(plan_row.qty) or 1) if plan_row else 1
 
@@ -72,12 +72,10 @@ def _send_prebilling_email(sub, contract, plan, qty, lead_days):
 	if plan and plan.cost:
 		amount_line = format_value(plan.cost * qty, {"fieldtype": "Currency", "currency": plan.currency})
 		if qty > 1:
-			# First user included: seats = billed + 1 (the contract's mz_users when set).
-			seats = cint(contract.get("mz_users")) or qty + 1
 			unit_line = format_value(plan.cost, {"fieldtype": "Currency", "currency": plan.currency})
-			amount_line = (
-				f"{seats} utilizadores (1.º incluído): {qty} × {unit_line} = {amount_line}"  # noqa: RUF001 (customer-facing sign)
-			)
+			# "utilizadores" only where the quantity IS the user count (a plan billed per user).
+			unit = " utilizadores" if cint(plan.get("mz_per_user")) else ""
+			amount_line = f"{qty}{unit} × {unit_line} = {amount_line}"  # noqa: RUF001 (customer-facing sign)
 		amount_text = f"<tr><td style='padding:4px 16px 4px 0'><strong>Valor Estimado:</strong></td><td>{amount_line}</td></tr>"
 	else:
 		amount_text = ""

@@ -31,6 +31,7 @@ def after_install():
 	ensure_daily_alerts_hour()
 	ensure_trial_customer_group()
 	ensure_cloud_plan_flags()
+	ensure_plan_users()
 	ensure_scheduler_plans()
 	retire_legacy_signup()
 	retire_notifications()
@@ -61,6 +62,7 @@ def after_migrate():
 	ensure_daily_alerts_hour()
 	ensure_trial_customer_group()
 	ensure_cloud_plan_flags()
+	ensure_plan_users()
 	ensure_scheduler_plans()
 	retire_legacy_signup()
 	retire_notifications()
@@ -277,11 +279,11 @@ _WELCOME_EMAIL_HTML = """
   <p><a href="{{ reset_link }}" style="display:inline-block;padding:12px 22px;background:#020202;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold">Definir a minha palavra-passe e entrar</a><br>
      <span style="font-size:12px;color:#5a6270">Utilizador: {{ contact_email }} · esta ligação é de utilização única.</span></p>
   {% if is_signed %}
-  <p>O seu plano <strong>{{ plan }}</strong> está activo. As facturas chegam a este email no início de cada período, com <strong>7 dias</strong> de prazo de pagamento.</p>
+  <p>O seu plano <strong>{{ plan_summary or plan }}</strong> está activo. As faturas chegam a este email no início de cada período, com <strong>7 dias</strong> de prazo de pagamento.</p>
   {% else %}
-  <p>Tem até <strong>{{ trial_end }}</strong> para experimentar tudo — facturas certificadas, clientes, stock, salários — sem qualquer pagamento. Comece pela primeira factura: leva 5 minutos e mostra logo se serve ao seu negócio.</p>
-  <p><strong>Activar não custa nada</strong> — a facturação começa no dia em que activar. Quando decidir: <a href="{{ activation_url }}" style="color:#008000;font-weight:bold">activar a minha conta</a>. Plano escolhido: <strong>{{ plan }}</strong> — pode alterá-lo na activação.</p>
-  <p>20 minutos connosco: emitimos a primeira factura consigo, sem custo — <a href="{{ booking_url }}" style="color:#008000;font-weight:bold">marcar 20 minutos</a>.</p>
+  <p>Tem até <strong>{{ trial_end }}</strong> para experimentar tudo — faturas certificadas, clientes, stock, salários — sem qualquer pagamento. Comece pela primeira fatura: leva 5 minutos e mostra logo se serve ao seu negócio.</p>
+  <p><strong>Activar não custa nada</strong> — a faturação começa no dia em que activar. Quando decidir: <a href="{{ activation_url }}" style="color:#008000;font-weight:bold">activar a minha conta</a>. Plano escolhido: <strong>{{ plan_summary or plan }}</strong> — pode alterá-lo na activação.</p>
+  <p>20 minutos connosco: emitimos a primeira fatura consigo, sem custo — <a href="{{ booking_url }}" style="color:#008000;font-weight:bold">marcar 20 minutos</a>.</p>
   {% endif %}
   <p style="font-size:13px;color:#5a6270">Responda a este email ou fale connosco: <a href="mailto:cloud@mozeconomia.co.mz" style="color:#008000;font-weight:bold">cloud@mozeconomia.co.mz</a> · WhatsApp +258 87 4444 645</p>
   {{ signature }}
@@ -303,9 +305,9 @@ SUPPORT_LINE = (
 	f'<p style="font-size:13px;color:#5a6270">Responda a este email ou fale connosco: '
 	f'<a href="mailto:{HELP_EMAIL}" style="{_LINK}">{HELP_EMAIL}</a> · WhatsApp {HELP_WHATSAPP}</p>'
 )
-TRIAL_PROMISE = "<p><strong>Activar não custa nada</strong> — a facturação começa no dia em que activar.</p>"
+TRIAL_PROMISE = "<p><strong>Activar não custa nada</strong> — a faturação começa no dia em que activar.</p>"
 CALL_OFFER = (
-	'<p>20 minutos connosco: emitimos a primeira factura consigo, sem custo — '
+	'<p>20 minutos connosco: emitimos a primeira fatura consigo, sem custo — '
 	f'<a href="{{{{ booking_url }}}}" style="{_LINK}">marcar 20 minutos</a>.</p>'
 )
 _FOOTER = SUPPORT_LINE + "{{ signature }}</div>"
@@ -318,15 +320,15 @@ LIFECYCLE_EMAIL_TEMPLATES = {
 		"<p>{{ greeting }}</p>"
 		"<p>O acesso à conta da <strong>{{ customer_name }}</strong> em {{ site_name }} foi suspenso hoje"
 		"{% if cause == 'trial' %} porque o período experimental terminou em <strong>{{ trial_end }}</strong> sem activação."
-		"{% elif cause == 'overdue' %} por falta de pagamento{% if invoice %} da factura <strong>{{ invoice }}</strong>"
+		"{% elif cause == 'overdue' %} por falta de pagamento{% if invoice %} da fatura <strong>{{ invoice }}</strong>"
 		"{% if outstanding %} ({{ outstanding }}{% if due_date %}, vencida em {{ due_date }}{% endif %}){% endif %}{% endif %}."
 		"{% else %}.{% endif %}</p>"
-		"<p><strong>Os seus dados estão intactos.</strong> Facturas, clientes, artigos, stock — tudo fica exactamente como o deixou. Nada foi apagado.</p>"
+		"<p><strong>Os seus dados estão intactos.</strong> Faturas, clientes, artigos, stock — tudo fica exactamente como o deixou. Nada foi apagado.</p>"
 		"{% if cause == 'trial' %}"
-		"<p>Para voltar a trabalhar basta activar a conta: o acesso é reposto de imediato e a facturação só começa no dia em que activar.</p>"
+		"<p>Para voltar a trabalhar basta activar a conta: o acesso é reposto de imediato e a faturação só começa no dia em que activar.</p>"
 		f'<p><a href="{{{{ activation_url }}}}" style="{_BTN}">Activar e continuar de onde parei</a></p>'
 		"{% elif cause == 'overdue' %}"
-		"<p>Para repor o acesso, regularize a factura em atraso — o acesso volta no próprio dia do pagamento. "
+		"<p>Para repor o acesso, regularize a fatura em atraso — o acesso volta no próprio dia do pagamento. "
 		"Se já pagou, responda a este email com o comprovativo e tratamos de imediato.</p>"
 		"{% else %}"
 		'<p>Para repor o acesso, <a href="{{ reactivation_url }}">peça a reactivação</a>, responda a este email ou fale connosco pelo WhatsApp.</p>'
@@ -341,7 +343,7 @@ LIFECYCLE_EMAIL_TEMPLATES = {
 		"<p>{{ greeting }}</p>"
 		"<p>A conta da <strong>{{ customer_name }}</strong> em {{ site_name }} esteve suspensa"
 		"{% if suspended_on %} desde {{ suspended_on }}{% endif %} e foi arquivada hoje.</p>"
-		"<p>Antes de a desligar fizemos uma <strong>cópia de segurança completa</strong> de todos os dados — facturas, clientes, artigos, documentos anexados. Nada se perdeu.</p>"
+		"<p>Antes de a desligar fizemos uma <strong>cópia de segurança completa</strong> de todos os dados — faturas, clientes, artigos, documentos anexados. Nada se perdeu.</p>"
 		"<p>Para ter a conta de volta basta pedir: "
 		'<a href="{{ reactivation_url }}">peça a reactivação</a>, responda a este email ou fale connosco pelo WhatsApp. '
 		"A nossa equipa restaura a conta a partir da cópia e a {{ customer_name }} continua exactamente de onde parou — "
@@ -356,12 +358,12 @@ LIFECYCLE_EMAIL_TEMPLATES = {
 		"Tudo o que registou continua exactamente onde estava — nada foi migrado, nada se perdeu.</p>"
 		f'<p><a href="{{{{ site_url }}}}" style="{_BTN}">Entrar na minha conta</a></p>'
 		"<table cellpadding=\"4\" cellspacing=\"0\" style=\"border-collapse:collapse;margin:8px 0\">"
-		"<tr><td><strong>Plano</strong></td><td>{{ plan }}</td></tr>"
-		"<tr><td><strong>Início da facturação</strong></td><td>{{ billing_start or 'hoje' }}</td></tr>"
+		"<tr><td><strong>Plano</strong></td><td>{{ plan_summary or plan }}</td></tr>"
+		"<tr><td><strong>Início da faturação</strong></td><td>{{ billing_start or 'hoje' }}</td></tr>"
 		"</table>"
-		"<p>A primeira factura chega a este email em {{ billing_start or 'breve' }}, com 7 dias de prazo. "
-		"Pagamento por transferência bancária (ABSA, NIB 000200151510200470737) ou E-Mola (+258 87 4444 645), sempre com o número da factura como referência.</p>"
-		"<p style=\"font-size:13px\">Precisa de mudar de plano ou de corrigir os dados de facturação? Responda a este email e tratamos no próprio dia.</p>"
+		"<p>A primeira fatura chega a este email em {{ billing_start or 'breve' }}, com 7 dias de prazo. "
+		"Pagamento por transferência bancária (ABSA, NIB 000200151510200470737) ou E-Mola (+258 87 4444 645), sempre com o número da fatura como referência.</p>"
+		"<p style=\"font-size:13px\">Precisa de mudar de plano ou de corrigir os dados de faturação? Responda a este email e tratamos no próprio dia.</p>"
 		+ _FOOTER,
 	},
 	"MozEconomia Cloud - Conta Reactivada": {
@@ -376,7 +378,7 @@ LIFECYCLE_EMAIL_TEMPLATES = {
 		"Active a conta antes dessa data e não volta a haver interrupção: "
 		'<a href="{{ activation_url }}">activar agora</a>.</p>'
 		"{% else %}"
-		"<p>O seu plano <strong>{{ plan }}</strong> está activo e as facturas continuam a chegar a este email.</p>"
+		"<p>O seu plano <strong>{{ plan_summary or plan }}</strong> está activo e as faturas continuam a chegar a este email.</p>"
 		"{% endif %}"
 		+ _FOOTER,
 	},
@@ -387,16 +389,16 @@ LIFECYCLE_EMAIL_TEMPLATES = {
 # No offer, no call: whoever opens the page changes stage; Day 4 brings the offer.
 GUIDE_EMAIL_TEMPLATES = {
 	GUIDE_EMAIL_TEMPLATE: {
-		"subject": "{{ segment }}: o guia prático de facturação{% if company_name %} para a {{ company_name }}{% endif %}",
+		"subject": "{{ segment }}: o guia prático de faturação{% if company_name %} para a {{ company_name }}{% endif %}",
 		"html": f'<div style="{_STYLE}">'
 		"<p>{{ greeting }}</p>"
-		"<p>Preparámos um guia para quem factura no sector <strong>{{ segment }}</strong>: "
-		"{% if guide_summary %}{{ guide_summary }}{% else %}como se factura na prática, o que a lei exige, "
+		"<p>Preparámos um guia para quem fatura no sector <strong>{{ segment }}</strong>: "
+		"{% if guide_summary %}{{ guide_summary }}{% else %}como se fatura na prática, o que a lei exige, "
 		"a comunicação mensal à Autoridade Tributária, os erros que custam dinheiro e uma lista de verificação de dez linhas.{% endif %}</p>"
 		f'<p><a href="{{{{ guide_url }}}}" style="{_BTN}">Abrir o guia — {{{{ guide_title or segment }}}}</a></p>'
 		"<p style=\"font-size:13px;color:#5a6270\">A página tem a data da última actualização e está preparada para imprimir.</p>"
 		"{{ signature }}"
-		'<p style="font-size:12px;color:#5a6270;margin-top:24px">MozEconomia Cloud — software de facturação certificado pela Autoridade Tributária de Moçambique. '
+		'<p style="font-size:12px;color:#5a6270;margin-top:24px">MozEconomia Cloud — software de faturação certificado pela Autoridade Tributária de Moçambique. '
 		'<a href="{{ unsubscribe_url }}" style="color:#5a6270">Deixar de receber</a>.</p></div>',
 	},
 }
@@ -522,13 +524,12 @@ _CONTRACT_TEMPLATE_TERMS = """
 <p>Contrato de prestação de serviços entre a MozEconomia, SA e <strong>{{ party_name }}</strong>.</p>
 <ol>
 <li><strong>Objecto.</strong> Disponibilização da plataforma MozEconomia Cloud, no plano
-<strong>{{ mz_subscription_plan }}</strong>, para {{ mz_users or 2 }} utilizador(es) — o primeiro
-está incluído no plano e os restantes são facturados por utilizador —, acessível em
+<strong>{{ mz_subscription_plan }}</strong>{% set plano = frappe.db.get_value("Subscription Plan", mz_subscription_plan, ["mz_users_included", "mz_per_user"], as_dict=True) or {} %}{% if plano.mz_per_user %}, para {{ mz_users or 1 }} utilizador(es), faturado por utilizador{% elif plano.mz_users_included %}, que inclui {{ plano.mz_users_included }} utilizadores{% endif %}, acessível em
 {{ mz_tenant_url }}.</li>
 <li><strong>Período experimental.</strong> Até {{ frappe.utils.formatdate(start_date) }} a utilização
-é gratuita e sem compromisso. A facturação inicia apenas após a assinatura deste contrato,
+é gratuita e sem compromisso. A faturação inicia apenas após a assinatura deste contrato,
 nunca antes dessa data.</li>
-<li><strong>Facturação.</strong> As facturas são emitidas no início de cada período de subscrição,
+<li><strong>Faturação.</strong> As faturas são emitidas no início de cada período de subscrição,
 com prazo de pagamento de 7 dias.</li>
 <li><strong>Suspensão.</strong> A falta de pagamento prolongada pode levar à suspensão do acesso.
 Os dados permanecem intactos durante a suspensão e a reactivação restaura o serviço integralmente.</li>
@@ -676,15 +677,38 @@ def ensure_cloud_plan_flags():
 		frappe.db.set_value("Subscription Plan", name, "mz_cloud_plan", 1, update_modified=False)
 
 
+def ensure_plan_users():
+	"""Seed Subscription Plan.mz_users_included for the self-service packages from the
+	tier in the plan's name (Básico 2, Profissional 4, Premium 6). Only where the field
+	is empty — a number the team typed is never overwritten."""
+	if not frappe.db.has_column("Subscription Plan", "mz_users_included"):
+		return
+	from ai_saas.saas.provisioning import PLAN_TIER_USERS, plan_tier
+
+	plans = frappe.get_all(
+		"Subscription Plan", {"mz_cloud_plan": 1, "mz_users_included": ("in", [0, None])}, pluck="name"
+	)
+	for name in plans:
+		users = PLAN_TIER_USERS.get(plan_tier(name))
+		if users:
+			frappe.db.set_value("Subscription Plan", name, "mz_users_included", users, update_modified=False)
+
+
 def ensure_scheduler_plans():
-	"""C4: seed MZ SaaS Settings.scheduler_plans once with the plans named Premium.
+	"""C4: seed MZ SaaS Settings.scheduler_plans once with the plans that include
+	automation — Profissional, Premium and Corporativo (pricing of 2026-10-05).
 	Afterwards the table is the team's to manage."""
 	if not frappe.db.exists("DocType", "MZ Scheduler Plan"):
 		return
 	settings = frappe.get_single("MZ SaaS Settings")
 	if settings.get("scheduler_plans"):
 		return
-	plans = frappe.get_all("Subscription Plan", {"name": ("like", "%Premium%")}, pluck="name")
+	from ai_saas.saas.provisioning import plan_tier
+
+	plans = [
+		p for p in frappe.get_all("Subscription Plan", pluck="name")
+		if plan_tier(p) in ("Profissional", "Premium", "Corporativo")
+	]
 	if not plans:
 		return
 	settings.set("scheduler_plans", [{"subscription_plan": p} for p in plans])
@@ -1050,10 +1074,10 @@ def ensure_lead_sources():
 # obligation that is not enabled AND reviewed (reviewed_by + reviewed_on). Codes match
 # the 'Conformidade MZ' rows of the Segment Intelligence Map.
 SEED_FISCAL_OBLIGATIONS = (
-	{"title": "Comunicação mensal de facturas (e-Declaração)", "code": "E-DECLARACAO", "periodicity": "Monthly",
+	{"title": "Comunicação mensal de faturas (e-Declaração)", "code": "E-DECLARACAO", "periodicity": "Monthly",
 	 "deadline_day": 1, "applies_to_all_segments": 1, "requires_vat": 0,
-	 "who": "Todas as empresas com software de facturação certificado.",
-	 "what_to_submit": "O ficheiro das facturas emitidas no mês anterior, na plataforma e-Declaração da AT."},
+	 "who": "Todas as empresas com software de faturação certificado.",
+	 "what_to_submit": "O ficheiro das faturas emitidas no mês anterior, na plataforma e-Declaração da AT."},
 	{"title": "Declaração periódica de IVA", "code": "IVA", "periodicity": "Monthly",
 	 "deadline_day": 1, "applies_to_all_segments": 1, "requires_vat": 1,
 	 "who": "Sujeitos passivos de IVA no regime normal.",

@@ -39,13 +39,27 @@ class TestAppsForSegment(FrappeTestCase):
 
 	def test_hrms_only_on_paid_tiers(self):
 		for plan, expect_hrms in (("Básico Mensal - MozEconomia Cloud", False), ("_Test Basico - MozEconomia Cloud", False), (None, False),
-		                          ("Profissional Mensal - MozEconomia Cloud", True), ("Premium Anual - MozEconomia Cloud", True)):
+		                          ("Profissional Mensal - MozEconomia Cloud", True), ("Premium Anual - MozEconomia Cloud", True),
+		                          ("Corporativo Mensal - MozEconomia Cloud", True)):
 			apps = P.apps_for_segment(SEG, plan)
 			self.assertEqual("hrms" in apps, expect_hrms, plan)
 			self.assertIn("healthcare", apps, plan)  # not gated
 		self.assertEqual(P.plan_tier("Premium Mensal - MozEconomia Cloud"), "Premium")
 		self.assertEqual(P.plan_tier("_Test Basico - MozEconomia Cloud"), "Básico")
+		self.assertEqual(P.plan_tier("Corporativo Anual - MozEconomia Cloud"), "Corporativo")
 		self.assertEqual(P.plan_tier("Ceres 12x1L - Mensal"), "")
+
+	def test_plan_users_seeded_only_where_empty(self):
+		from ai_saas.install import ensure_plan_users
+		from ai_saas.tests.helpers import OTHER_PLAN, TEST_PLAN, ensure_test_plan
+
+		ensure_test_plan()
+		frappe.db.set_value("Subscription Plan", TEST_PLAN, "mz_users_included", 0)
+		frappe.db.set_value("Subscription Plan", OTHER_PLAN, "mz_users_included", 9)  # the team's number
+		ensure_plan_users()
+		self.assertEqual(frappe.db.get_value("Subscription Plan", TEST_PLAN, "mz_users_included"), 6)
+		self.assertEqual(frappe.db.get_value("Subscription Plan", OTHER_PLAN, "mz_users_included"), 9)
+		frappe.db.rollback()
 
 	def test_domain_profile_adds_partner_apps_after_the_segment(self):
 		"""Curati (2026-08-29): pharmacy apps on top of the segment's, healthcare before

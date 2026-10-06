@@ -22,7 +22,6 @@ fbq('init', {{ meta_pixel_id | tojson }}); fbq('track', 'PageView');
     domain: {{ domain | tojson }},
     route: {{ route | tojson }},
     presetIndustry: {{ (preset_industry or "") | tojson }},
-    minimumUsers: {{ (minimum_users or 2) | tojson }},
     pixel: {{ (meta_pixel_id or "") | tojson }},
     assetVersion: {{ (asset_version or 0) | tojson }}
   };
@@ -61,13 +60,13 @@ fbq('init', {{ meta_pixel_id | tojson }}); fbq('track', 'PageView');
     <input id="phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+258 8x xxx xxxx">
     <div class="reg__err" role="alert" aria-live="polite" data-for="phone"></div>
     <button type="button" class="reg__btn" data-next="1">Continuar</button>
-    <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
+    <p class="reg__note">MozEconomia Cloud — software de faturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
   </section>
 
   <!-- Step 2 · Company -->
   <section class="reg__step" data-step="2" hidden>
     <h1 tabindex="-1">Sobre a sua empresa</h1>
-    <p class="reg__lead">Quase lá. Com estes dados, a sua conta nasce pronta a facturar em nome da sua empresa.</p>
+    <p class="reg__lead">Quase lá. Com estes dados, a sua conta nasce pronta a faturar em nome da sua empresa.</p>
     <label for="company_name">Nome da empresa</label>
     <input id="company_name" name="company_name" type="text" autocomplete="organization" required>
     <div class="reg__err" role="alert" aria-live="polite" data-for="company_name"></div>
@@ -99,17 +98,13 @@ fbq('init', {{ meta_pixel_id | tojson }}); fbq('track', 'PageView');
       <button type="button" class="reg__btn reg__btn--ghost" data-back="2">Voltar</button>
       <button type="button" class="reg__btn" data-next="2">Continuar</button>
     </div>
-    <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
+    <p class="reg__note">MozEconomia Cloud — software de faturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
   </section>
 
   <!-- Step 3 · Account -->
   <section class="reg__step" data-step="3" hidden>
     <h1 tabindex="-1">O seu plano</h1>
     <p class="reg__lead">Só paga depois de activar — nunca antes do fim do período experimental.</p>
-        <label for="users">Utilizadores</label>
-        <input id="users" name="users" type="number" inputmode="numeric" min="{{ minimum_users }}" step="1"
-          value="{{ minimum_users }}">
-        <div class="reg__err" role="alert" aria-live="polite" data-for="users"></div>
         <label>Plano</label>
         <div class="reg__plan-pill" id="reg-plan-pill">
           <span id="reg-plan-label"></span>
@@ -121,10 +116,9 @@ fbq('init', {{ meta_pixel_id | tojson }}); fbq('track', 'PageView');
           <label class="reg__choice"><input type="radio" name="plan" value="{{ p.name }}" data-cost="{{ p.cost }}"
               data-currency="{{ p.currency }}" data-interval="{{ p.billing_interval }}"> {{ p.plan_name or p.name }}
             <span class="reg__price">{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{
-              "mês" if p.billing_interval == "Month" else "ano" }} por utilizador · 1.º incluído</span></label>
+              "mês" if p.billing_interval == "Month" else "ano" }}{% if p.mz_users_included %} · {{ p.mz_users_included }} utilizadores{% endif %}</span></label>
           {% endfor %}
         </div>
-        <div class="reg__domain" id="reg-plan-total" aria-live="polite"></div>
     <!-- The subdomain is chosen automatically and shown as a miniature browser address
          bar — a confirmation, not a decision. The field only appears via "alterar" (or
          when something needs the visitor's attention — no suggestion, slug taken). -->
@@ -150,7 +144,7 @@ fbq('init', {{ meta_pixel_id | tojson }}); fbq('track', 'PageView');
       <button type="button" class="reg__btn" id="reg-submit">Criar a minha conta</button>
     </div>
     <div class="reg__err reg__err--global" id="reg-global-err" role="alert" aria-live="polite"></div>
-    <p class="reg__note">MozEconomia Cloud — software de facturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
+    <p class="reg__note">MozEconomia Cloud — software de faturação e gestão (ERP) certificado pela Autoridade Tributária de Moçambique.</p>
   </section>
 
   <!-- Progress / terminal states -->

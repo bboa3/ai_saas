@@ -28,12 +28,12 @@ def _alert_ops(subject, message):
 STEP_FIELDS = {
 	1: ("full_name", "email", "phone", "plan"),
 	2: ("company_name", "tax_id", "tax_regime", "industry", "address", "city"),
-	3: ("subdomain", "plan", "users", "terms_accepted"),
+	3: ("subdomain", "plan", "terms_accepted"),
 }
 
 NUIT_RE = re.compile(r"^\d{9}$")
 
-def _validate_step(step, values, minimum_users=None):
+def _validate_step(step, values):
 	if step == 1 and "email" in values:
 		email = (values["email"] or "").strip().lower()
 		if not validate_email_address(email):
@@ -61,15 +61,6 @@ def _validate_step(step, values, minimum_users=None):
 			values["subdomain"] = check["subdomain"]
 		if values.get("plan") and not frappe.db.exists("Subscription Plan", values["plan"]):
 			frappe.throw("Plano inválido.")
-		if values.get("users"):
-			# Per-user pricing: self-service floor from settings; the desk passes
-			# minimum_users=1 (Sales may contract any value >= 1). An empty value is
-			# not validated here — _create_documents stamps the floor on it.
-			users = cint(values["users"])
-			floor = minimum_users if minimum_users is not None else get_settings().minimum_users
-			if users < floor:
-				frappe.throw(f"O plano é por utilizador — mínimo {floor} utilizador(es).")
-			values["users"] = users
 		if "terms_accepted" in values:
 			values["terms_accepted"] = cint(values["terms_accepted"])
 
@@ -191,6 +182,7 @@ def _create_documents(signup):
 	and the unsigned Contract — submitted, which provisions (B1)."""
 	from erpnext.crm.doctype.contract_template.contract_template import get_contract_template
 
+	from ai_saas.saas.contract_lifecycle import is_per_user_plan
 	from ai_saas.saas.provisioning import apps_for_segment
 	s = get_settings()
 
@@ -271,10 +263,9 @@ def _create_documents(signup):
 		"contract_template": _CONTRACT_TEMPLATE_TITLE, "mz_direct": cint(signup.get("venda_directa")),
 		"mz_subscription_plan": signup.plan, "mz_tenant": slug, "mz_domain": domain, "mz_tenant_url": slug + domain,
 		"mz_segment": signup.industry,
-		# Per-user pricing: contracted seats. Every signup-created contract carries an
-		# explicit number — an empty field (legacy in-flight signup, blanked desk record)
-		# gets the advertised minimum.
-		"mz_users": cint(signup.get("users")) or s.minimum_users,
+		# Contracted users exist only on a per-user plan (Corporativo, desk); a package
+		# plan's users are the plan's own (Subscription Plan.mz_users_included).
+		"mz_users": cint(signup.get("users")) if is_per_user_plan(signup.plan) else None,
 		"mz_apps_to_install": [{"app_name": a} for a in apps_for_segment(signup.industry, signup.plan, domain)],
 	}
 	rendered = get_contract_template(_CONTRACT_TEMPLATE_TITLE, contract_fields)
@@ -328,8 +319,12 @@ def create_account_from_desk(signup):
 	for step, fieldnames in STEP_FIELDS.items():
 		values = {f: doc.get(f) for f in fieldnames}
 		values["terms_accepted"] = 1  # o contrato é assinado fora do sistema
-		_validate_step(step, values, minimum_users=1)  # Sales may contract any seats >= 1
+		_validate_step(step, values)
 		doc.update(values)
+	from ai_saas.saas.contract_lifecycle import is_per_user_plan
+
+	if is_per_user_plan(doc.plan) and cint(doc.users) < 1:
+		frappe.throw("Este plano fatura por utilizador — indique o número de utilizadores.")
 	doc.city = _resolve_city(doc.city, doc.address)
 	if not doc.city:
 		frappe.throw("Indique a cidade — não foi possível lê-la do endereço.")

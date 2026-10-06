@@ -48,8 +48,8 @@
    "fieldname": "origin",
    "fieldtype": "Select",
    "label": "Origem",
-   "options": "Facturação\nManual\nPedido do Cliente",
-   "default": "Facturação",
+   "options": "Faturação\nManual\nPedido do Cliente",
+   "default": "Faturação",
    "in_list_view": 1,
    "in_standard_filter": 1
   },

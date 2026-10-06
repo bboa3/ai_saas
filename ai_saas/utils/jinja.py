@@ -11,6 +11,8 @@ import re
 import frappe
 
 from ai_saas.saas.activation import get_activation_url, get_reactivation_url
+from ai_saas.saas.activation import plan_summary as mz_plan_summary
+from ai_saas.saas.activation import plan_users as mz_plan_users
 from ai_saas.saas.content import guide_url as mz_guide_url
 from ai_saas.saas.content import unsubscribe_url as mz_unsubscribe_url
 from ai_saas.saas.crm import find_contract as mz_find_contract
@@ -22,6 +24,8 @@ __all__ = [
 	"mz_first_name",
 	"mz_greeting",
 	"mz_guide_url",
+	"mz_plan_summary",
+	"mz_plan_users",
 	"mz_signature",
 	"mz_unsubscribe_url",
 ]
