@@ -246,7 +246,8 @@ direct account is a human decision through `MZ Overdue Review`.
 | `daily` | `ai_saas.saas.billing_monitor.flag_overdue_customers` | Reminders, review rows, follow-ups |
 | `daily` | `ai_saas.saas.tenant_lifecycle.process_lifecycle` | Trial expiry → suspend; 33 days overdue → suspend; grace elapsed → archive (dry-run until switched off) |
 | `daily` | `ai_saas.saas.usage_signals.collect_usage_snapshots` | Probe trial sites, hot/cold signals |
-| `daily` | `ai_saas.multipay.tasks.sync_pending_payments` | Multipay reconciliation |
+| `ai_saas.multipay.tasks.sync_pending_payments` | every 10 min | Multipay reconciliation fallback (poll SISLOG for Pending requests, amount-checked). See `docs/MULTIPAY.md` |
+| `ai_saas.multipay.tasks.expire_pending_payments` | daily | Pending Multipay requests older than 24 h become Expired |
 | `hourly` | `ai_saas.saas.provisioning.retry_stuck_provisioning` | Re-queue stuck provisioning |
 | ERPNext native daily | `trigger_daily_alerts` | Fires every "Days Before/After" notification (pinned to 08:00 by `install.ensure_daily_alerts_hour`) |
 | Frappe native, every minute | `frappe.email.queue.flush` | Sends the Email Queue — every Notification depends on it |

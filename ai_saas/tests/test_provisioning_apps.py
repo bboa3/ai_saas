@@ -49,6 +49,16 @@ class TestAppsForSegment(FrappeTestCase):
 		self.assertEqual(P.plan_tier("Corporativo Anual - MozEconomia Cloud"), "Corporativo")
 		self.assertEqual(P.plan_tier("Ceres 12x1L - Mensal"), "")
 
+	def test_period_label_names_the_billing_period(self):
+		from ai_saas.saas.activation import period_label
+
+		self.assertEqual(period_label("Month", 1), "mês")
+		self.assertEqual(period_label("Month", 6), "semestre")
+		self.assertEqual(period_label("Month", 3), "trimestre")
+		self.assertEqual(period_label("Month", 4), "4 meses")
+		self.assertEqual(period_label("Year", 1), "ano")
+		self.assertEqual(period_label("Year", None), "ano")
+
 	def test_plan_users_seeded_only_where_empty(self):
 		from ai_saas.install import ensure_plan_users
 		from ai_saas.tests.helpers import OTHER_PLAN, TEST_PLAN, ensure_test_plan

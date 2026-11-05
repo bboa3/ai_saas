@@ -161,10 +161,10 @@ class TestSignup(FrappeTestCase):
 			}).insert(ignore_permissions=True)
 		return _side_effect
 
-	def _walk_to_step3(self, domain=None):
+	def _walk_to_step3(self, domain=None, tax_id="400123456"):
 		r = signup._start("Teste Signup", EMAIL, "+258841234567", PLAN, domain)
 		token = r["token"]
-		signup._update(token, 2, {"company_name": COMPANY, "tax_id": "400123456", "tax_regime": "Normal (16%)",
+		signup._update(token, 2, {"company_name": COMPANY, "tax_id": tax_id, "tax_regime": "Normal (16%)",
 		                          "industry": self.industry, "address": "Av. 25 de Setembro, 1234, Bairro Central, Maputo"})
 		signup._update(token, 3, {"subdomain": SLUG, "plan": PLAN, "terms_accepted": 1})
 		return token
@@ -512,6 +512,29 @@ class TestSignup(FrappeTestCase):
 		self.assertEqual(known.customer_group, group_before)             # its commercial group is left alone
 		self.assertEqual(known.email_id, "financeiro@example.com")       # and so is what sales filled in
 		self.assertTrue(known.customer_primary_contact)                  # but the missing chain is completed
+
+	@patch("ai_saas.saas.provisioning.provision_tenant")
+	def test_placeholder_nuit_is_no_nuit_yet(self, provision):
+		"""111111111 is a manager trying the system before the NUIT is at hand: never a
+		duplicate, never matched to — or stored on — a Customer. Activation asks for it."""
+		provision.side_effect = self._fake_provision()
+		known = frappe.get_doc({"doctype": "Customer", "customer_name": COMPANY + " Existente", "customer_type": "Company",
+		                        "customer_group": TRIAL_CUSTOMER_GROUP, "territory": signup._default_territory(),
+		                        "tax_id": "111111111"}).insert(ignore_permissions=True)
+		done = frappe.get_doc({"doctype": "MZ Signup", "email": "outra-pessoa@example.com", "full_name": "Antigo",
+		                       "tax_id": "111111111", "status": "Complete"}).insert(ignore_permissions=True)
+		try:
+			token = self._walk_to_step3(tax_id="111 111 111")
+			with patch("ai_saas.api.signup._alert_ops"):
+				out = signup._submit(token)
+			self.assertEqual(out["state"], "progress")                   # not refused
+			doc = frappe.get_doc("MZ Signup", {"resume_token": token})
+			self.assertEqual(doc.tax_id, "111111111")                    # what was typed stays on the record
+			self.assertNotEqual(doc.customer, known.name)                # never joined to another lead's Customer
+			self.assertFalse(frappe.db.get_value("Customer", doc.customer, "tax_id"))
+		finally:
+			frappe.delete_doc("MZ Signup", done.name, force=True, ignore_permissions=True)
+			frappe.db.commit()
 
 	@patch("ai_saas.saas.provisioning.provision_tenant")
 	def test_ceiling_refuses_and_keeps_started(self, provision):

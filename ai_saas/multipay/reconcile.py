@@ -68,5 +68,7 @@ def reconcile_payment(payment_request_name: str) -> None:
 			"mpay_payment_entry": pe.name,
 		},
 	)
-	frappe.db.set_value("Sales Invoice", pr.reference_name, "mz_latest_multipay_request", payment_request_name)
+	frappe.db.set_value(
+		"Sales Invoice", pr.reference_name, "mz_latest_multipay_request", payment_request_name
+	)
 	frappe.db.commit()

@@ -277,9 +277,13 @@ def _submit(token):
 	return _state_payload(doc)
 
 
+# Still says nothing about which record matched, but tells the visitor what to check:
+# a mistyped NUIT, or a company that already has an account under another email.
 GENERIC_REFUSAL = (
 	"Não foi possível concluir o registo com estes dados. "
-	"A nossa equipa vai verificar e entrar em contacto."
+	"Verifique se o NUIT está correcto e se a sua empresa já não tem conta com outro email — "
+	"nesse caso, entre com o email desse registo. "
+	"Precisa de ajuda? cloud@mozeconomia.co.mz · WhatsApp +258 87 4444 645"
 )
 
 

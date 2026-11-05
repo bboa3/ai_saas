@@ -40,7 +40,7 @@
       {% if fixed_plan %}
       {# Sold directly (Corporativo): the plan was agreed outside this page — shown, never chosen. #}
       {% set fp_cost = frappe.format_value(fixed_plan.cost, {"fieldtype": "Currency", "currency": fixed_plan.currency}) %}
-      {% set fp_per = "mês" if fixed_plan.billing_interval == "Month" else "ano" %}
+      {% set fp_per = fixed_plan.period %}
       <div class="reg__plan-pill" id="act-plan-pill">
         <span id="act-plan-label">{{ fixed_plan.plan_name or fixed_plan.name }}
           {% if fixed_plan.mz_per_user %}{% set fp_users = [contract.mz_users or 1, 1] | max %}— {{ fp_users }} utilizador{{ "es" if fp_users > 1 else "" }} × {{ fp_cost }} = {{ frappe.format_value(fixed_plan.cost * fp_users, {"fieldtype": "Currency", "currency": fixed_plan.currency}) }}/{{ fp_per }}
@@ -57,12 +57,19 @@
         <label class="reg__choice">
           <span><input type="radio" name="plan" value="{{ p.name }}"
             data-label="{{ p.plan_name or p.name }}"
-            data-price="{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ "mês" if p.billing_interval == "Month" else "ano" }}{% if p.mz_users_included %} · {{ p.mz_users_included }} utilizadores{% endif %}"
+            data-price="{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ p.period }}{% if p.mz_users_included %} · {{ p.mz_users_included }} utilizadores{% endif %}"
             {% if p.name == contract.mz_subscription_plan %}checked{% endif %}> {{ p.plan_name or p.name }}</span>
-          <span class="reg__price">{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ "mês" if p.billing_interval == "Month" else "ano" }}{% if p.mz_users_included %} · {{ p.mz_users_included }} utilizadores{% endif %}</span>
+          <span class="reg__price">{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ p.period }}{% if p.mz_users_included %} · {{ p.mz_users_included }} utilizadores{% endif %}</span>
         </label>
         {% endfor %}
       </div>
+      {% endif %}
+
+      {% if needs_nuit %}
+      {# Registered with a placeholder NUIT to try the system first: the real one is asked here. #}
+      <p class="reg__section">Dados fiscais</p>
+      <label for="act-tax-id">NUIT da empresa</label>
+      <input id="act-tax-id" name="tax_id" type="text" inputmode="numeric" maxlength="9" placeholder="9 dígitos" required>
       {% endif %}
 
       <button class="reg__btn" id="btn-activate">Assinar e activar a minha conta</button>
@@ -124,6 +131,7 @@
     btn.disabled = true; errBox().classList.remove("show");
     var label = btn.textContent; btn.textContent = "A activar…";
     var plan = document.querySelector("#act-plan-choices input:checked");
+    var taxId = $("act-tax-id");
     frappe.call({
       method: "ai_saas.saas.activation.activate",
       type: "POST",
@@ -131,6 +139,7 @@
         contract: {{ contract.name | tojson }},
         token: {{ token | tojson }},
         plan: plan ? plan.value : null,
+        tax_id: taxId ? taxId.value : null,
         accept_terms: 1
       },
       callback: function (r) {

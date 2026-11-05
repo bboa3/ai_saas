@@ -33,6 +33,15 @@ STEP_FIELDS = {
 
 NUIT_RE = re.compile(r"^\d{9}$")
 
+# What a manager types to see the system before the company's NUIT is at hand. Taken
+# as "no NUIT yet": never matched against other accounts, never put on the Customer
+# (two such leads would otherwise share one) — activation asks for the real one.
+PLACEHOLDER_NUITS = frozenset([d * 9 for d in "0123456789"] + ["123456789", "987654321"])
+
+def is_placeholder_nuit(nuit):
+	return (nuit or "") in PLACEHOLDER_NUITS
+
+
 def _validate_step(step, values):
 	if step == 1 and "email" in values:
 		email = (values["email"] or "").strip().lower()
@@ -140,7 +149,11 @@ def _find_duplicate(doc):
 	licences, consulting, POS — and one person can own or represent more than one
 	company. Refusing on `Customer.email_id` (the rule until 2026-08-25) shut the door
 	on exactly the people most likely to buy; A4 now reuses that Customer instead.
+
+	A placeholder NUIT names no company, so it can be nobody's duplicate.
 	"""
+	if is_placeholder_nuit(doc.tax_id):
+		return None
 	twin = frappe.db.sql(
 		"""SELECT k.name FROM `tabContract` k INNER JOIN `tabCustomer` c ON c.name = k.party_name
 		   WHERE k.docstatus = 1 AND IFNULL(k.mz_tenant, '') <> '' AND c.tax_id = %s LIMIT 1""",
@@ -196,7 +209,8 @@ def _create_documents(signup):
 	# Customer — the company is its NUIT. An existing customer of the house (on-prem,
 	# consulting, POS) buying the cloud product is the same customer, not a second one:
 	# reuse the record, keep its commercial group, and never overwrite what sales set.
-	existing = frappe.db.get_value("Customer", {"tax_id": signup.tax_id}, "name") if signup.tax_id else None
+	nuit = "" if is_placeholder_nuit(signup.tax_id) else signup.tax_id
+	existing = frappe.db.get_value("Customer", {"tax_id": nuit}, "name") if nuit else None
 	if existing:
 		customer = frappe.get_doc("Customer", existing)
 		if not customer.lead_name:
@@ -206,7 +220,7 @@ def _create_documents(signup):
 			"doctype": "Customer", "customer_name": signup.company_name, "customer_type": "Company",
 			"customer_group": TRIAL_CUSTOMER_GROUP,   # so sales reporting can tell trials apart
 			"territory": _default_territory(),
-			"tax_id": signup.tax_id, "lead_name": lead_name, "mobile_no": signup.phone,
+			"tax_id": nuit, "lead_name": lead_name, "mobile_no": signup.phone,
 		})
 		customer.insert(ignore_permissions=True)
 

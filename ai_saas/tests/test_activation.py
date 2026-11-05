@@ -20,6 +20,12 @@ TEST_SLUG = "e1-teste"
 class TestActivation(FunnelTestCase):
 	CUSTOMER = TEST_CUSTOMER
 
+	def setUp(self):
+		super().setUp()
+		# A real customer has a NUIT; the one case without it has its own test.
+		frappe.db.set_value("Customer", TEST_CUSTOMER, "tax_id", "400111222")
+		frappe.db.commit()
+
 	def tearDown(self):
 		# activation creates a Billing Address through the Customer's Dynamic Links
 		for a in frappe.get_all("Dynamic Link", {"link_doctype": "Customer", "link_name": TEST_CUSTOMER, "parenttype": "Address"}, pluck="parent"):
@@ -95,7 +101,7 @@ class TestActivation(FunnelTestCase):
 		with patch("ai_saas.saas.provisioning.provision_tenant"), \
 		     patch("ai_saas.saas.activation.send_lifecycle_email") as mail:
 			result = activation._activate(
-				doc.name, token, plan=OTHER_PLAN, tax_id="123456789",
+				doc.name, token, plan=OTHER_PLAN, tax_id="400765432",
 				address_line1="Av. 25 de Setembro, 100", city="Maputo", accept_terms=1,
 			)
 		self.assertTrue(result["ok"])
@@ -123,7 +129,7 @@ class TestActivation(FunnelTestCase):
 		self.assertTrue(sub.can_generate_new_invoice(future))
 		self.assertFalse(sub.can_generate_new_invoice(add_days(future, 1)))
 		self.assertFalse(sub.can_generate_new_invoice(add_days(future, -1)))
-		self.assertEqual(frappe.db.get_value("Customer", TEST_CUSTOMER, "tax_id"), "123456789")
+		self.assertEqual(frappe.db.get_value("Customer", TEST_CUSTOMER, "tax_id"), "400765432")
 		addr = activation._get_billing_address(TEST_CUSTOMER)
 		self.assertEqual(addr.address_type, "Billing")
 		self.assertEqual(addr.city, "Maputo")
@@ -172,6 +178,20 @@ class TestActivation(FunnelTestCase):
 		self.assertEqual((addr.address_type, addr.address_line1, addr.city), ("Billing", "Rua Nova, 1", "Beira"))
 		self.assertEqual(frappe.db.count("Address", {"address_title": TEST_CUSTOMER}), 1)   # updated, not duplicated
 		self.assertEqual(frappe.db.get_value("Customer", TEST_CUSTOMER, "tax_id"), "400123456")
+
+	def test_customer_without_nuit_gives_the_real_one_at_activation(self):
+		"""Signed up with a placeholder NUIT: the page asks for it, and signing waits for a real one."""
+		frappe.db.set_value("Customer", TEST_CUSTOMER, "tax_id", "")
+		doc = self._make_trial(add_days(nowdate(), 14))
+		token = activation.get_activation_token(doc.name)
+		self.assertTrue(activation.get_activation_context(doc.name, token).needs_nuit)
+		for missing_or_fake in (None, "111111111", "123456789"):
+			with self.assertRaises(frappe.ValidationError):
+				activation._activate(doc.name, token, tax_id=missing_or_fake, accept_terms=1)
+		self.assertEqual(frappe.db.get_value("Contract", doc.name, "is_signed"), 0)
+		with patch("ai_saas.saas.contract_lifecycle._setup_subscription"), patch("ai_saas.saas.provisioning.provision_tenant"):
+			activation._activate(doc.name, token, tax_id="400 765 432", accept_terms=1)
+		self.assertEqual(frappe.db.get_value("Customer", TEST_CUSTOMER, "tax_id"), "400765432")
 
 	def test_activation_while_suspended_reactivates(self):
 		doc = self._make_trial(add_days(nowdate(), -3), prov_status="Suspended")

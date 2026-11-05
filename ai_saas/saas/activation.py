@@ -48,13 +48,29 @@ def is_valid_token(contract_name: str, token: str) -> bool:
 def cloud_plans():
 	"""The plans self-service offers: Subscription Plans flagged mz_cloud_plan (seeded by
 	install.ensure_cloud_plan_flags for the existing 'MozEconomia Cloud' plans)."""
-	return frappe.get_all(
+	plans = frappe.get_all(
 		"Subscription Plan",
 		filters={"mz_cloud_plan": 1},
 		fields=["name", "plan_name", "cost", "currency", "billing_interval", "billing_interval_count",
 		        "mz_users_included"],
 		order_by="cost asc",
 	)
+	for p in plans:
+		p.period = period_label(p.billing_interval, p.billing_interval_count)
+	return plans
+
+
+def period_label(interval, count=1) -> str:
+	"""What the plan's cost buys, as the customer reads it after the price: 'mês',
+	'ano', 'semestre', 'trimestre', or '{n} meses' for any other count."""
+	from frappe.utils import cint
+
+	count = cint(count) or 1
+	if interval == "Year":
+		return "ano" if count == 1 else f"{count} anos"
+	if interval == "Month":
+		return {1: "mês", 3: "trimestre", 6: "semestre"}.get(count, f"{count} meses")
+	return "período"
 
 
 def plan_summary(contract_name) -> str:
@@ -70,12 +86,13 @@ def plan_summary(contract_name) -> str:
 		return ""
 	plan = frappe.db.get_value(
 		"Subscription Plan", c.mz_subscription_plan,
-		["plan_name", "cost", "currency", "billing_interval", "mz_per_user", "mz_users_included"], as_dict=True,
+		["plan_name", "cost", "currency", "billing_interval", "billing_interval_count", "mz_per_user", "mz_users_included"],
+		as_dict=True,
 	)
 	if not plan or not flt(plan.cost):
 		return c.mz_subscription_plan
 	name = plan.plan_name or c.mz_subscription_plan
-	per = {"Month": "mês", "Year": "ano"}.get(plan.billing_interval, "período")
+	per = period_label(plan.billing_interval, plan.billing_interval_count)
 	money = lambda v: fmt_money(v, currency=plan.currency)  # noqa: E731
 	if cint(plan.mz_per_user):
 		users = max(cint(c.mz_users), 1)
@@ -129,12 +146,18 @@ def get_activation_context(contract_name: str, token: str) -> dict:
 	if plan_name and not any(p.name == plan_name for p in ctx.plans):
 		ctx.fixed_plan = frappe.db.get_value(
 			"Subscription Plan", plan_name,
-			["name", "plan_name", "cost", "currency", "billing_interval", "mz_per_user", "mz_users_included"],
+			["name", "plan_name", "cost", "currency", "billing_interval", "billing_interval_count", "mz_per_user",
+			 "mz_users_included"],
 			as_dict=True,
 		)
+		if ctx.fixed_plan:
+			ctx.fixed_plan.period = period_label(ctx.fixed_plan.billing_interval, ctx.fixed_plan.billing_interval_count)
 	ctx.customer = frappe.db.get_value(
 		"Customer", c.party_name, ["customer_name", "tax_id", "email_id", "mobile_no"], as_dict=True
 	) or frappe._dict(customer_name=c.party_name)
+	# Signed up with a placeholder (or sold without one): the NUIT is asked here, where
+	# billing starts — every invoice carries it.
+	ctx.needs_nuit = not ctx.customer.get("tax_id")
 	ctx.address = _get_billing_address(c.party_name) or frappe._dict()
 	ctx.contact_email = c.get("contact_email") or ctx.customer.get("email_id") or ""
 	ctx.terms = c.contract_terms
@@ -213,12 +236,16 @@ def _activate(contract_name, token, plan=None, tax_id=None, address_line1=None,
 			frappe.throw("Plano inválido.")
 		c.mz_subscription_plan = plan
 	if tax_id is not None and tax_id.strip():
-		from ai_saas.api.signup import NUIT_RE
+		from ai_saas.saas.accounts import NUIT_RE, is_placeholder_nuit
 
 		nuit = re.sub(r"\D", "", tax_id)
 		if not NUIT_RE.match(nuit):
 			frappe.throw("O NUIT tem 9 dígitos.")
+		if is_placeholder_nuit(nuit):
+			frappe.throw("Indique o NUIT verdadeiro da empresa — sai em todas as faturas.")
 		frappe.db.set_value("Customer", c.party_name, "tax_id", nuit)
+	elif not frappe.db.get_value("Customer", c.party_name, "tax_id"):
+		frappe.throw("Indique o NUIT da empresa para activar a conta.")
 	_upsert_billing_address(c.party_name, address_line1, address_line2, city)
 	if contact_phone and contact_phone.strip():
 		# The Contact is the source of the customer's phone; Customer.mobile_no and the

@@ -43,14 +43,13 @@
 			"fieldname": "require_callback_token",
 			"fieldtype": "Check",
 			"label": "Requer Token de Callback",
-			"description": "Se activado, o SISLOG deve incluir o token secreto no URL de callback. Desactive se o SISLOG não enviar token."
+			"description": "Deprecated (2026-10-25): the callback token is always required. Leave the Callback Token set and register it in the SISLOG callback URL."
 		},
 		{
-			"depends_on": "eval:doc.require_callback_token == 1",
 			"fieldname": "callback_token",
 			"fieldtype": "Password",
 			"label": "Token de Callback",
-			"description": "Segredo incorporado no URL de callback para autenticar notificações do SISLOG"
+			"description": "Mandatory for the SISLOG webhook: register the callback URL with ?token=<this value>. Empty = no callback accepted; the 10-minute poll reconciles alone."
 		},
 		{
 			"fieldname": "payment_account",

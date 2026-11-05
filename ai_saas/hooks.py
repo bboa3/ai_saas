@@ -42,13 +42,18 @@ scheduler_events = {
 		"ai_saas.saas.billing_monitor.flag_overdue_customers",
 		"ai_saas.saas.tenant_lifecycle.process_lifecycle",
 		"ai_saas.saas.usage_signals.collect_usage_snapshots",
-		"ai_saas.multipay.tasks.sync_pending_payments",
+		"ai_saas.multipay.tasks.expire_pending_payments",
 		# Content layer 1 — the fiscal-deadline alert (window-based, skip-tolerant).
 		"ai_saas.saas.fiscal_alerts.send_due_alerts",
 	],
 	"hourly": [
 		"ai_saas.saas.provisioning.retry_stuck_provisioning",
 	],
+	"cron": {
+		# Multipay webhook fallback: a missed notification used to wait for the
+		# daily run, i.e. a paying customer waited up to a day for confirmation.
+		"*/10 * * * *": ["ai_saas.multipay.tasks.sync_pending_payments"],
+	},
 }
 
 # Helpers available to Email Templates and Notifications (get_activation_url).

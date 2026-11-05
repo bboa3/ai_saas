@@ -115,8 +115,7 @@ fbq('init', {{ meta_pixel_id | tojson }}); fbq('track', 'PageView');
           {% for p in plans %}
           <label class="reg__choice"><input type="radio" name="plan" value="{{ p.name }}" data-cost="{{ p.cost }}"
               data-currency="{{ p.currency }}" data-interval="{{ p.billing_interval }}"> {{ p.plan_name or p.name }}
-            <span class="reg__price">{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{
-              "mês" if p.billing_interval == "Month" else "ano" }}{% if p.mz_users_included %} · {{ p.mz_users_included }} utilizadores{% endif %}</span></label>
+            <span class="reg__price">{{ frappe.format_value(p.cost, {"fieldtype": "Currency", "currency": p.currency}) }}/{{ p.period }}{% if p.mz_users_included %} · {{ p.mz_users_included }} utilizadores{% endif %}</span></label>
           {% endfor %}
         </div>
     <!-- The subdomain is chosen automatically and shown as a miniature browser address

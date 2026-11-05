@@ -854,6 +854,7 @@ def ensure_multipay_custom_fields():
 						"label": "Estado Multipay",
 						"fieldtype": "Select",
 						"options": "\nPending\nPaid\nFailed\nExpired",
+						"search_index": 1,
 						"insert_after": "mpay_method",
 						"module": "AI SaaS",
 					},

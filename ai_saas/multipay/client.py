@@ -22,7 +22,10 @@ def _settings():
 	if not s.enabled:
 		frappe.throw("Multipay não está activado. Configure em Multipay Settings.", frappe.ValidationError)
 	if not s.base_url or not s.api_key or not s.username:
-		frappe.throw("Multipay Settings incompleto: base_url, api_key e username são obrigatórios.", frappe.ValidationError)
+		frappe.throw(
+			"Multipay Settings incompleto: base_url, api_key e username são obrigatórios.",
+			frappe.ValidationError,
+		)
 	return s
 
 
@@ -31,8 +34,11 @@ def _headers(api_key: str) -> dict:
 
 
 def _fmt_amount(amount_mzn: float) -> str:
-	"""Convert MZN float to SISLOG value string (2 implied decimals, no separator)."""
-	return str(round(amount_mzn * 100))
+	"""Convert MZN to the SISLOG value string (2 implied decimals, no separator),
+	through Decimal: round(2.675 * 100) on a binary float is 267, not 268."""
+	from ai_saas.multipay.api import to_centavos
+
+	return str(to_centavos(amount_mzn))
 
 
 def request_reference(transaction_id: str, amount_mzn: float, cel: str | None = None) -> dict:
@@ -65,7 +71,9 @@ def request_reference(transaction_id: str, amount_mzn: float, cel: str | None = 
 
 	if not data.get("entity") or not data.get("reference"):
 		frappe.log_error(title="Multipay: missing entity/reference in response", message=json.dumps(data))
-		frappe.throw("SISLOG retornou resposta válida mas sem entidade ou referência.", frappe.ValidationError)
+		frappe.throw(
+			"SISLOG retornou resposta válida mas sem entidade ou referência.", frappe.ValidationError
+		)
 
 	return data
 
