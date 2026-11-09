@@ -49,6 +49,8 @@ def domain_profile(domain=None) -> dict:
 MAX_ATTEMPTS = 3
 PROVISION_TIMEOUT = 1200  # 20 min — bench new-site + app installs
 WIZARD_TIMEOUT = 300
+# Runs inside the tenant; erpnext_mz is on every tenant, ai_saas is not.
+RESET_LINK_METHOD = "erpnext_mz.utils.tenant_access.generate_user_reset_link"
 
 # Which apps a tenant gets (decision 2026-08-28): the base on every tenant, plus what the
 # lead's segment declares (Segment Intelligence Map > Aplicações). Base apps go on
@@ -735,21 +737,18 @@ def _step_notify_customer(prov) -> None:
 def _generate_password_reset_link(prov) -> str:
 	"""Generate a one-time password-reset URL for the contact_email user on the new site.
 
-	Uses `bench execute` with `__import__` so the function is resolved at eval time
-	inside the new site's Frappe context. The plain dotted-path form fails because
-	bench execute evals in utils.py's global namespace where only `frappe` is
-	imported; `__import__` is a builtin and always in scope.
+	The helper lives in erpnext_mz (installed on every tenant), so it is called by its
+	plain dotted path. It used to be reached through an `__import__(...)` expression
+	into ai_saas; on production that command line was SIGKILLed (exit -9) within
+	~0.1 s whenever the background worker launched it, while the same command typed
+	in a shell passed — keep `__import__` out of subprocess command lines.
 
 	The key is stored for `prov.contact_email` — the user created by the setup wizard,
 	NOT Administrator.
 	"""
-	method = (
-		"__import__('ai_saas.saas.site_helpers', fromlist=['generate_user_reset_link'])"
-		".generate_user_reset_link"
-	)
 	raw = run_cmd_capture(
 		[
-			get_bench_cmd(), "--site", prov.site_name, "execute", method,
+			get_bench_cmd(), "--site", prov.site_name, "execute", RESET_LINK_METHOD,
 			"--kwargs", json.dumps({"email": prov.contact_email}),
 		],
 		step="reset-key",

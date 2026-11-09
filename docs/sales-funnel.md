@@ -76,7 +76,7 @@ Bench at `/srv/frappe/frappe-bench`, control site `erp.local`, app `apps/ai_saas
 | `ai_saas/hooks.py` | Registers the Contract `doc_events` and the scheduled jobs |
 | `ai_saas/saas/contract_lifecycle.py` | On Contract submit: creates the Subscription and requests provisioning — both gated on `is_signed` |
 | `ai_saas/saas/provisioning.py` | Creates the customer site (`bench new-site`, setup wizard, welcome email). Single entry point: `provision_tenant(contract_name)` |
-| `ai_saas/saas/site_helpers.py` | Code executed *inside* the customer's site, invoked from the control site |
+| `erpnext_mz/utils/tenant_access.py`, `erpnext_mz/utils/tenant_usage.py` | Code executed *inside* the customer's site, invoked from the control site (erpnext_mz is on every tenant; ai_saas is not) |
 | `ai_saas/saas/billing_monitor.py` | Daily dunning job: reminders and review records |
 | `ai_saas/fixtures/notification.json` | The 20 `AI SaaS - *` notifications (nurture, dunning, post-contract) |
 
